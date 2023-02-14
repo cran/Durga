@@ -1,0 +1,17 @@
+
+Submit to CRAN first
+
+Add inst/CITATION file
+
+
+
+Replace x-axis with effect size below
+
+
+Brackets text.pad seems to scale with cex
+
+
+Reviewers
+
+Daniël Lakens
+Human Technology Interaction Group, Eindhoven University of Technology, Eindhoven, Netherlands
