@@ -276,7 +276,16 @@ DurgaPlot(d,
 ```
 
 
+`group.dx` is implemented very simply as a default value for various other `*.dx` arguments. That means that values such as `violin.dx` are not added to `group.dx`; rather they replace it. Under some circumstances, it can be more convenient if `*.dx` values are added to `group.dx`. You can achieve this in your own code by storing `group.dx` in a variable, then adding relative offsets for other arguments.
 
+```{r eval=FALSE}
+# Example snippet, make *.dx arguments relative to group.dx
+group.dx <- c(0.75, 0)  # Shift group 1 right, leave group 2 unchanged
+DurgaPlot(..., group.dx = group.dx, 
+          central.tendency.dx = group.dx + 0.1, # Shift mean & error bars right
+          violin.dx = group.dx + c(-0.4, -0.5), # Shift violins left
+          ef.size.dx = -0.5)
+```
 
 ## Advanced techniques
 
@@ -336,10 +345,27 @@ d
 
 ```
 
+The Durga implementation of Cohen's d uses pooled standard deviation, so what if you need to Cohen's d with averaged standard deviations instead? The following example shows one way to use the `cohens_d` function from the [effectsize](https://easystats.github.io/effectsize/index.html) R package with Durga.
+
+
+```{R eval=FALSE}
+# Create a new function that calls effectsize::cohens_d and returns just the calculated statistic 
+myCohens <- function(x1, x2) {
+  # Note that we swap the arguments because Durga expects the calculation to be x2 - x1
+  cd <- effectsize::cohens_d(x2, x1, pooled_sd = FALSE) 
+  # Extract and return just the Cohen's d value
+  cd$Cohens_d
+}
+# Pass it in to DurgaDiff as the effect.type
+d <- DurgaDiff(petunia, 1, 2, effect.type = myCohens)
+
+# Specify the effect type label
+DurgaPlot(d, ef.size.label = expression("Cohen's d"))
+```
 
 ## Examples
 
-This example shows the use of custom group order and display names, contrasts between relevent pairs of groups rather than between all combinations of groups, and various custom plotting options.
+This example shows the use of custom group order and display names, contrasts between relevant pairs of groups rather than between all combinations of groups, and various custom plotting options.
 
 ```{r fig.height=5, fig.width=7}
 par(mar = c(5, 4, 3, 1) + 0.1)
@@ -461,3 +487,11 @@ DurgaPlot(d, paired = FALSE,
 
 legend("topright", c("Before insulin", "After insulin"), col = cols, fill = colsTr, bty = "n")
 ```
+
+## Suggestions? Problems?
+
+The source code for Durga is available at [github.com/KhanKawsar/EstimationPlot](https://github.com/KhanKawsar/EstimationPlot). We welcome suggestions for improvements or reports of problems. Let us know by [logging an issue](https://github.com/KhanKawsar/EstimationPlot/issues) on GitHub.
+
+The Durga [GitHub page](https://github.com/KhanKawsar/EstimationPlot) has additional information such as how to install the latest development version of Durga.
+
+

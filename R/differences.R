@@ -4,7 +4,8 @@
 #### Private functions ####
 
 # Confidence interval of the mean of a group
-CI <- function(x, alpha = 0.95){
+CI <- function(x, alpha = 0.95) {
+  # Alternatively, perhaps we should bootstrap this so not assuming any particular distribution
   m <- mean(x)
   sd <- stats::sd(x)
   n <- length(x)
@@ -29,6 +30,7 @@ stCohensD <- function(x1, x2){
   m2 <- mean(x2)
   SD2 <- stats::sd(x2)
   N2 <- length(x2)
+  # Calculate pooled standard deviation
   x <- sqrt(((N1 - 1) * (SD1 * SD1) + (N2 - 1) * (SD2 * SD2)) / (N1 + N2 - 2))
   (m2 - m1) / x
 }
@@ -108,6 +110,7 @@ calcPairDiff <- function(data, pair, isPaired, pairNames, pairIndices, data.col,
       statistic <- .wrapPairedStatistic(stHedgesGz)
     }
   } else {
+    # Unpaired data
     bootstrapData <- data
     if (is.function(effect.type)) {
       statistic <- .wrap2GroupStatistic(effect.type)
@@ -238,8 +241,9 @@ DurgaDiff.formula <- function(x, data = NULL, id.col, ...) {
 #' Alternative effect types can be estimated by passing a function for
 #' \code{effect.type}. For unpaired data, the function must accept two
 #' parameters: the values from the two groups to be compared (group 2 and group
-#' 1). For paired data, the function must accept a single argument; a vector of
-#' group 1 values - group 2 values.
+#' 1), and return a single numeric value, the effect size. For paired data, the
+#' function must accept a single argument; a vector of group 1 values - group 2
+#' values, and return a single numeric value.
 #'
 #' Confidence intervals for the estimate are determined using bootstrap
 #' resampling, using the adjusted bootstrap percentile (BCa) method (see
@@ -263,11 +267,12 @@ DurgaDiff.formula <- function(x, data = NULL, id.col, ...) {
 #'   used as group labels for plotting or printing.
 #' @param contrasts Specify the pairs of groups to be compared. By default, all
 #'   pairwise differences are generated. May be a single string, a vector of
-#'   strings, or a matrix. See Details for more information.
+#'   strings, or a matrix. Specify \code{NULL} to avoid calculating any
+#'   contrasts. See Details for more information.
 #' @param effect.type Type of group difference to be estimated. Possible types
 #'   are: \code{"mean"}, difference in unstandardised group means;
-#'   \code{"cohens"}, Cohen's d; \code{"hedges"}, Hedges' g. See Details for
-#'   further information.
+#'   \code{"cohens"}, Cohen's d; \code{"hedges"}, Hedges' g; or a function. See
+#'   Details for further information.
 #' @param R The number of bootstrap replicates. The default value of 1000 may
 #'   need to be increased for large sample sizes; if \code{R <= nrow(x)}, an
 #'   error such as "Error in bca.ci... estimated adjustment 'a' is NA" will be
@@ -290,11 +295,13 @@ DurgaDiff.formula <- function(x, data = NULL, id.col, ...) {
 #'   are: \code{mean}, \code{median}, \code{sd} (standard deviation), \code{se}
 #'   (standard error of the mean), \code{CI.lower} and \code{CI.upper} (lower
 #'   and upper confidence intervals of the mean, confidence level as set by the
-#'   \code{ci.conf} parameter) and \code{n} (group sample size.)}
+#'   \code{ci.conf} parameter) and \code{n} (group sample size)}
 #'
 #'   \item{\code{group.differences}}{List of \code{DurgaGroupDiff} objects,
 #'   which are \code{boot} objects with added confidence interval information.
-#'   See \code{\link[boot]{boot}} and \code{\link[boot]{boot.ci}}}
+#'   See \code{\link[boot]{boot}} and \code{\link[boot]{boot.ci}}. This element will be missing
+#'   if \code{contrasts} is empty or \code{NULL}}
+#'
 #'   \item{\code{groups}}{Vector of group names}
 #'   \item{\code{group.names}}{Labels used to identify groups}
 #'   \item{\code{effect.type}}{Value of \code{effect.type} parameter}

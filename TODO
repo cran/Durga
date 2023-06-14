@@ -1,17 +1,11 @@
 
-Submit to CRAN first
-
 Add inst/CITATION file
 
 
+Add functionality to plot "confidence curves", see https://www.mn.uio.no/math/english/research/projects/focustat/the-focustat-blog!/confidence-dummies.html
+which also has an extensive bibliography
 
-Replace x-axis with effect size below
-
-
-Brackets text.pad seems to scale with cex
-
-
-Reviewers
+Possible paper Reviewers
 
 Daniël Lakens
 Human Technology Interaction Group, Eindhoven University of Technology, Eindhoven, Netherlands

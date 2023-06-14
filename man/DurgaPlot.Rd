@@ -14,10 +14,12 @@ DurgaPlot(
     "minout", "tukey", "tukeyDense", "jitter", "overplot"),
   points.spread = ifelse(points.method == "jitter", 0.1, 0.3),
   points.dx = group.dx,
+  points.adjust = 1,
   points.params = list(),
   violin = isFALSE(box) && isFALSE(bar),
   violin.shape = c("left-half", "right-half", "full"),
   violin.fill = TRUE,
+  violin.params = list(),
   violin.adj = 1.5,
   violin.width = 0.35,
   violin.trunc = TRUE,
@@ -39,6 +41,8 @@ DurgaPlot(
   ef.size.violin.shape = c("right-half", "left-half", "full"),
   ef.size.violin.trunc = TRUE,
   ef.size.pch = 17,
+  ef.size.lty = 1,
+  ef.size.lwd = 2,
   ef.size.ticks = NULL,
   ef.size.label = es$effect.name,
   ef.size.dx = 0,
@@ -90,7 +94,8 @@ can be shifted independently using the appropriate \code{*.dx} parameters.}
 \item{group.colour}{Colours to use for each group. Either an
 \code{\link{RColorBrewer}} palette name or a vector of colours.}
 
-\item{points}{If not FALSE, points are plotted. If \code{TRUE}, points are
+\item{points}{If not \code{FALSE}, points are plotted. If \code{TRUE}, points
+are
 displayed with a default colour (which is the group colour with 40%
 transparency). You may specify a vector of colours; if length 1, all points
 are drawn with the specified colour. If length is less than the number of
@@ -108,21 +113,34 @@ points horizontally (ignored if \code{points.method = "overplot"}).}
 
 \item{points.dx}{Horizontal shift to be applied to points in each group.}
 
+\item{points.adjust}{Adjust the bandwidth used to calculate kernel density
+when drawing points. Smaller values mean a tighter fit.}
+
 \item{points.params}{List of named parameters to pass on to
 \code{\link[graphics]{points}}, e.g. \code{DurgaPlot(es, points = "black",
 points.params = list(pch = 21, bg = as.numeric(factor(data$Sex)) + 1))}.}
 
-\item{violin}{If not FALSE, violin plots are drawn. If \code{TRUE}, violins
-are drawn in default colours. Otherwise specifies the colour of the violin
+\item{violin}{If not \code{FALSE}, violin plots are drawn. Violins
+are simply probability density plots, with density on the x-axis
+and value on the y-axis. If \code{TRUE}, violins are drawn in
+default colours. Otherwise specifies the colour of the violin
 borders.}
 
 \item{violin.shape}{Desired violin shape - left-half only (\code{"left"}),
 right-half only (\code{"right"}), or a full violin (\code{"full"}).}
 
-\item{violin.fill}{Colour used to fill violins.}
+\item{violin.fill}{Colour used to fill violins. Specify \code{FALSE} or
+\code{NA} to leave violins unfilled.}
+
+\item{violin.params}{Additional graphical parameters applied to drawing
+violins. May include \code{density}, \code{angle}, \code{lty}, \code{lwd},
+\code{lend} etc. Values are passed on to \code{\link[graphics]{polygon}};
+see its help page for details.}
 
 \item{violin.adj}{Value used to control violin plot smoothness by adjusting
-the kernel density bandwidth. Higher values produce a smoother plot.}
+the kernel density bandwidth. Higher values produce a smoother plot.
+Passed unchanged as the \code{adjust} argument to the
+\code{\link[stats]{density}} function.}
 
 \item{violin.width}{Width of maximum violin horizontal extents, as a
 proportion of the distance between groups.}
@@ -132,7 +150,8 @@ the violin is truncated.}
 
 \item{violin.dx}{Horizontal shift to be applied to each violin.}
 
-\item{box}{If not FALSE, draw a box-and-whisker plot of the grouped values.
+\item{box}{If not \code{FALSE}, draw a box-and-whisker plot of the grouped
+values.
 Value may be a colour, in which case the box borders are plotted with the
 colour(s). See \code{\link[graphics]{boxplot}}.}
 
@@ -151,7 +170,8 @@ list.}
 
 \item{box.dx}{Horizontal shift to be applied to each box.}
 
-\item{bar}{If not FALSE, draw a bar plot of the group means or medians,
+\item{bar}{If not \code{FALSE}, draw a bar plot of the group means or
+medians,
 according to \code{central.tendency}. May be \code{TRUE} or a colour.}
 
 \item{bar.fill}{Colour used to fill bars.}
@@ -160,7 +180,8 @@ according to \code{central.tendency}. May be \code{TRUE} or a colour.}
 
 \item{bar.dx}{Horizontal shift to be applied to each bar.}
 
-\item{ef.size}{If not FALSE, effect sizes are plotted. May be \code{TRUE} or
+\item{ef.size}{If not \code{FALSE}, effect sizes are plotted. May be
+\code{TRUE} or
 a colour.}
 
 \item{ef.size.position}{Effect sizes are plotted to the right of the main
@@ -169,22 +190,28 @@ plot if there is only one effect size to plot and \code{ef.size.position !=
 increase the size of the right margin before plotting (see
 \code{\link[graphics:par]{par(mar = ...)}}).}
 
-\item{ef.size.violin}{If not FALSE, boostrapped effect size estimates are
-show as a violin plot. May be a colour, used for the violin border, and a
-transparent version is used for the violin fill.}
+\item{ef.size.violin}{If not \code{FALSE}, boostrapped effect size estimates
+are shown as a violin plot. May be a colour that is used for the violin
+border and fill (unless \code{ef.size.violin.fill} is specified).}
 
-\item{ef.size.violin.fill}{Colour used to fill effect size violins.}
+\item{ef.size.violin.fill}{Colour used to fill effect size violins. Default
+is a transparent version of \code{ef.size.violin}.}
 
-\item{ef.size.violin.shape}{Shape of the effect size violin.}
+\item{ef.size.violin.shape}{Shape of the effect size violin. One of
+\code{"right-half"}, \code{"left-half"} or \code{"full"}.}
 
 \item{ef.size.violin.trunc}{If \code{TRUE}, effect size violin is truncated
 vertically so that it just covers the estimated effect size.}
 
 \item{ef.size.pch}{Symbol to represent mean effect size.}
 
+\item{ef.size.lty}{Line style for the effect size error bar.}
+
+\item{ef.size.lwd}{Line weight for the effect size error bar.}
+
 \item{ef.size.ticks}{Optional locations and labels for ticks on the effect
 size y-axis. E.g. to interpret effect size using Cohen's default values,
-specif \code{ef.size.ticks = c("Large negative effect" = -0.8, "Medium
+specify \code{ef.size.ticks = c("Large negative effect" = -0.8, "Medium
 negative effect" = -0.5, "Small negative effect" = -0.2, "No effect" = 0,
 "Small positive effect" = 0.2, "Medium positive effect" = 0.5, "Large
 positive effect" = 0.8)}}
@@ -228,15 +255,18 @@ will shift the effect size y-axis label to the left or right (for
 \code{ef.size.params = list(las = 1)} will rotate the effect size axis
 labels without rotating the main axis labels.}
 
-\item{paired}{If \code{TRUE}, lines are drawn joining the individual data
-points.}
+\item{paired}{If not \code{FALSE} and the data a paired, lines are drawn
+joining the individual data points. May be \code{TRUE} or a colour.
+Defaults to \code{TRUE} if the data are paired (i.e. the \code{id.col}
+argument was specified in the call to \code{\link{DurgaDiff}}).}
 
 \item{paired.lty}{Line style for pair lines.}
 
 \item{paired.lwd}{Line width for pair lines.}
 
-\item{central.tendency}{If not FALSE, a visual indicator of central tendency
-is drawn. May be a colour, in which case it is used for mean/median and
+\item{central.tendency}{If not \code{FALSE}, a visual indicator of central
+tendency
+is drawn. May be \code{TRUE} or a colour, in which case it is used for mean/median and
 error bars.}
 
 \item{central.tendency.type}{Should the indicated measure of central tendency

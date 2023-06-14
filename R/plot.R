@@ -22,7 +22,11 @@ truncateDensity <- function(density, range) {
   to <- utils::head(which(density$x > range[2]), 1)
   keep <- seq(from, to)
   # Extend by 1 step in each direction so that density completely includes data
-  keep <- c(keep[1] - 1, keep, keep[length(keep)] + 1)
+  # Handle pathological case when density does not extend past data
+  if (keep[1] > 1)
+    keep <- c(keep[1] - 1, keep)
+  if (keep[length(keep)] < length(density$x))
+    keep <- c(keep, keep[length(keep)] + 1)
 
   density$y <- c(0, density$y[keep], 0)
   density$x <- c(density$x[keep[1]], density$x[keep], density$x[keep[length(keep)]])
@@ -132,7 +136,7 @@ plotViolin <- function(shape, centreX, d, ...) {
 #   specified, no mapping is performed.
 plotEffectSize <- function(pwes, xo, centreY,
                            showViolin, violinCol, violin.fill, violin.width, violin.shape, violin.trunc,
-                           ef.size.col, ef.size.pch, mapYFn = identity, xpd = FALSE) {
+                           ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd, mapYFn = identity, xpd = FALSE) {
   deltaY <- centreY - pwes$t0
   if (showViolin) {
     d <- stats::density(pwes$t, na.rm = TRUE)
@@ -156,11 +160,11 @@ plotEffectSize <- function(pwes, xo, centreY,
   graphics::points(xo, mapYFn(pwes$t0 + deltaY), pch = ef.size.pch, col = ef.size.col, cex = 1.5, xpd = xpd)
   # Confidence interval of effect size
   graphics::segments(xo, mapYFn(pwes$bca[4] + deltaY), xo, mapYFn(pwes$bca[5] + deltaY),
-           col = ef.size.col, lty = 1, lwd = 2.0, xpd = xpd)
+           col = ef.size.col, lty = ef.size.lty, lwd = ef.size.lwd, xpd = xpd)
 }
 
 # Plot effect size to the right of the main plot. Only useful when showing a single effect size
-plotEffectSizesRight <- function(es, pwes, ef.size.col, ef.size.pch,
+plotEffectSizesRight <- function(es, pwes, ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd,
                                  showViolin, violinCol, violin.fill, violin.width, violin.shape, violin.trunc,
                                  ef.size.dx, axisLabel, ticksAt,
                                  groupX, ef.size.line.col, ef.size.line.lty, ef.size.line.lwd) {
@@ -178,7 +182,7 @@ plotEffectSizesRight <- function(es, pwes, ef.size.col, ef.size.pch,
     esRange <- range(c(0, pwes$t))
     plotEffectSize(pwes, x, y,
                    showViolin, violinCol, violin.fill, violin.width, violin.shape, violin.trunc,
-                   ef.size.col, ef.size.pch)
+                   ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd)
 
     # Axis labels on right-hand
     labels <- names(ticksAt)
@@ -199,12 +203,14 @@ plotEffectSizesRight <- function(es, pwes, ef.size.col, ef.size.pch,
     }
     plotEffectSize(pwes, x, pwes$t0,
                    showViolin, violinCol, violin.fill, violin.width, violin.shape, violin.trunc,
-                   ef.size.col, ef.size.pch, mapYFn = mapY)
+                   ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd, mapYFn = mapY)
 
     # Axis labels on right-hand
     labels <- names(ticksAt)
     if (is.null(ticksAt)) {
-      ticksAt <- pretty(esRange)
+      # Extend ticks to include entire CI
+      tickRange <- range(esRange, pwes$bca[4:5])
+      ticksAt <- pretty(tickRange)
     }
     if (is.null(labels)) {
       labels <- ticksAt
@@ -235,7 +241,7 @@ plotEffectSizesRight <- function(es, pwes, ef.size.col, ef.size.pch,
 #   bottom of the main plot region and the top of the effect size plot region.
 # @param plotProportion Height of the effect size plot region as a proportion of
 #   the main plot region.
-plotEffectSizesBelow <- function(es, plotDiffs, ef.size.col, ef.size.pch,
+plotEffectSizesBelow <- function(es, plotDiffs, ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd,
                                  showViolin, violinCol, violin.fill, violin.width, violin.shape, violin.trunc,
                                  xlim, ef.size.dx, ef.size.label, ticksAt,
                                  ef.size.line.col, ef.size.line.lty, ef.size.line.lwd,
@@ -313,6 +319,8 @@ plotEffectSizesBelow <- function(es, plotDiffs, ef.size.col, ef.size.pch,
   # Recycle parameters
   ef.size.col <- rep_len(ef.size.col, length(plotDiffs))
   ef.size.pch <- rep_len(ef.size.pch, length(plotDiffs))
+  ef.size.lty <- rep_len(ef.size.lty, length(plotDiffs))
+  ef.size.lwd <- rep_len(ef.size.lwd, length(plotDiffs))
 
   # Plot all diffs
   for (i in seq_along(plotDiffs)) {
@@ -322,7 +330,7 @@ plotEffectSizesBelow <- function(es, plotDiffs, ef.size.col, ef.size.pch,
       # Add default group dx for the displayed group to effect size dx for the contrast
       x <- gid1 + group.dx[gid1] + ef.size.dx[i]
       plotEffectSize(pwes, x, pwes$t0, showViolin, violinCol, violin.fill, violin.width, violin.shape, violin.trunc,
-                     ef.size.col[i], ef.size.pch[i], mapY, xpd = TRUE)
+                     ef.size.col[i], ef.size.pch[i], ef.size.lty[i], ef.size.lwd[i], mapY, xpd = TRUE)
       # Label this difference
       graphics::text(x, mapY(ylim[1]), getDiffLabel(pwes), xpd = TRUE, pos = 1)
     }
@@ -446,7 +454,8 @@ DurgaTransparent <-  function(colour, transparency, relative = FALSE) {
 #' @param group.colour Colours to use for each group. Either an
 #'   \code{\link{RColorBrewer}} palette name or a vector of colours.
 #'
-#' @param points If not FALSE, points are plotted. If \code{TRUE}, points are
+#' @param points If not \code{FALSE}, points are plotted. If \code{TRUE}, points
+#'   are
 #'   displayed with a default colour (which is the group colour with 40%
 #'   transparency). You may specify a vector of colours; if length 1, all points
 #'   are drawn with the specified colour. If length is less than the number of
@@ -460,16 +469,27 @@ DurgaTransparent <-  function(colour, transparency, relative = FALSE) {
 #' @param points.spread Numeric value used to adjust the points scatter method
 #'   points horizontally (ignored if \code{points.method = "overplot"}).
 #' @param points.dx Horizontal shift to be applied to points in each group.
+#' @param points.adjust Adjust the bandwidth used to calculate kernel density
+#'   when drawing points. Smaller values mean a tighter fit.
 #' @param points.params List of named parameters to pass on to
 #'   \code{\link[graphics]{points}}, e.g. \code{DurgaPlot(es, points = "black",
 #'   points.params = list(pch = 21, bg = as.numeric(factor(data$Sex)) + 1))}.
 #'
-#' @param violin If not FALSE, violin plots are drawn. If \code{TRUE}, violins
-#'   are drawn in default colours. Otherwise specifies the colour of the violin
+#' @param violin If not \code{FALSE}, violin plots are drawn. Violins
+#'   are simply probability density plots, with density on the x-axis
+#'   and value on the y-axis. If \code{TRUE}, violins are drawn in
+#'   default colours. Otherwise specifies the colour of the violin
 #'   borders.
-#' @param violin.fill Colour used to fill violins.
+#' @param violin.fill Colour used to fill violins. Specify \code{FALSE} or
+#'   \code{NA} to leave violins unfilled.
+#' @param violin.params Additional graphical parameters applied to drawing
+#'   violins. May include \code{density}, \code{angle}, \code{lty}, \code{lwd},
+#'   \code{lend} etc. Values are passed on to \code{\link[graphics]{polygon}};
+#'   see its help page for details.
 #' @param violin.adj Value used to control violin plot smoothness by adjusting
 #'   the kernel density bandwidth. Higher values produce a smoother plot.
+#'   Passed unchanged as the \code{adjust} argument to the
+#'   \code{\link[stats]{density}} function.
 #' @param violin.width Width of maximum violin horizontal extents, as a
 #'   proportion of the distance between groups.
 #' @param violin.trunc Numeric value that specifies what vertical proportion of
@@ -478,7 +498,8 @@ DurgaTransparent <-  function(colour, transparency, relative = FALSE) {
 #'   right-half only (\code{"right"}), or a full violin (\code{"full"}).
 #' @param violin.dx Horizontal shift to be applied to each violin.
 #'
-#' @param box If not FALSE, draw a box-and-whisker plot of the grouped values.
+#' @param box If not \code{FALSE}, draw a box-and-whisker plot of the grouped
+#'   values.
 #'   Value may be a colour, in which case the box borders are plotted with the
 #'   colour(s). See \code{\link[graphics]{boxplot}}.
 #' @param box.fill Colour used to fill the bodies of the box-and-whisker plot.
@@ -492,14 +513,16 @@ DurgaTransparent <-  function(colour, transparency, relative = FALSE) {
 #'   list.
 #' @param box.dx Horizontal shift to be applied to each box.
 #'
-#' @param bar If not FALSE, draw a bar plot of the group means or medians,
+#' @param bar If not \code{FALSE}, draw a bar plot of the group means or
+#'   medians,
 #'   according to \code{central.tendency}. May be \code{TRUE} or a colour.
 #' @param bar.fill Colour used to fill bars.
 #' @param bar.width Width of bars.
 #' @param bar.dx Horizontal shift to be applied to each bar.
 #'
-#' @param central.tendency If not FALSE, a visual indicator of central tendency
-#'   is drawn. May be a colour, in which case it is used for mean/median and
+#' @param central.tendency If not \code{FALSE}, a visual indicator of central
+#'   tendency
+#'   is drawn. May be \code{TRUE} or a colour, in which case it is used for mean/median and
 #'   error bars.
 #' @param central.tendency.type Should the indicated measure of central tendency
 #'   be \code{"mean"} or \code{"median"}?
@@ -523,33 +546,40 @@ DurgaTransparent <-  function(colour, transparency, relative = FALSE) {
 #' @param error.bars.lty Line style for error bars.
 #' @param error.bars.lwd Line width for error bars.
 #'
-#' @param paired If \code{TRUE}, lines are drawn joining the individual data
-#'   points.
+#' @param paired If not \code{FALSE} and the data a paired, lines are drawn
+#'   joining the individual data points. May be \code{TRUE} or a colour.
+#'   Defaults to \code{TRUE} if the data are paired (i.e. the \code{id.col}
+#'   argument was specified in the call to \code{\link{DurgaDiff}}).
 #' @param paired.lty Line style for pair lines.
 #' @param paired.lwd Line width for pair lines.
 #'
-#' @param ef.size If not FALSE, effect sizes are plotted. May be \code{TRUE} or
+#' @param ef.size If not \code{FALSE}, effect sizes are plotted. May be
+#'   \code{TRUE} or
 #'   a colour.
 #' @param ef.size.position Effect sizes are plotted to the right of the main
 #'   plot if there is only one effect size to plot and \code{ef.size.position !=
 #'   "below"}. If the effect size is drawn to the right, you will need to
 #'   increase the size of the right margin before plotting (see
 #'   \code{\link[graphics:par]{par(mar = ...)}}).
-#' @param ef.size.violin If not FALSE, boostrapped effect size estimates are
-#'   show as a violin plot. May be a colour, used for the violin border, and a
-#'   transparent version is used for the violin fill.
-#' @param ef.size.violin.shape Shape of the effect size violin.
+#' @param ef.size.violin If not \code{FALSE}, boostrapped effect size estimates
+#'   are shown as a violin plot. May be a colour that is used for the violin
+#'   border and fill (unless \code{ef.size.violin.fill} is specified).
+#' @param ef.size.violin.shape Shape of the effect size violin. One of
+#'   \code{"right-half"}, \code{"left-half"} or \code{"full"}.
 #' @param ef.size.violin.trunc If \code{TRUE}, effect size violin is truncated
 #'   vertically so that it just covers the estimated effect size.
-#' @param ef.size.violin.fill Colour used to fill effect size violins.
+#' @param ef.size.violin.fill Colour used to fill effect size violins. Default
+#'   is a transparent version of \code{ef.size.violin}.
 #' @param ef.size.pch Symbol to represent mean effect size.
+#' @param ef.size.lty Line style for the effect size error bar.
+#' @param ef.size.lwd Line weight for the effect size error bar.
 #' @param ef.size.dx Horizontal shift to be applied to each contrast/effect
 #'   size. Unlike other \code{.dx} parameters, \code{ef.size.dx} is indexed by
 #'   contrast rather than group. When effect size is below the plot, the
 #'   \code{group.dx} for the group above the effect size is also added.
 #' @param ef.size.ticks Optional locations and labels for ticks on the effect
 #'   size y-axis. E.g. to interpret effect size using Cohen's default values,
-#'   specif \code{ef.size.ticks = c("Large negative effect" = -0.8, "Medium
+#'   specify \code{ef.size.ticks = c("Large negative effect" = -0.8, "Medium
 #'   negative effect" = -0.5, "Small negative effect" = -0.2, "No effect" = 0,
 #'   "Small positive effect" = 0.2, "Medium positive effect" = 0.5, "Large
 #'   positive effect" = 0.8)}
@@ -667,11 +697,13 @@ DurgaPlot <- function(es,
                                       "tukeyDense", "jitter", "overplot"),
                     points.spread = ifelse(points.method == "jitter", 0.1, 0.3),
                     points.dx = group.dx,
+                    points.adjust = 1,
                     points.params = list(),
 
                     violin = isFALSE(box) && isFALSE(bar),
                     violin.shape = c("left-half", "right-half", "full"),
                     violin.fill = TRUE,
+                    violin.params = list(),
                     violin.adj = 1.5,
                     violin.width = 0.35,
                     violin.trunc = TRUE,
@@ -694,8 +726,10 @@ DurgaPlot <- function(es,
                     ef.size.violin = TRUE,
                     ef.size.violin.fill = TRUE,
                     ef.size.violin.shape = c("right-half", "left-half", "full"),
-                    ef.size.violin.trunc = TRUE, # TODO
+                    ef.size.violin.trunc = TRUE,
                     ef.size.pch = 17,
+                    ef.size.lty = 1,
+                    ef.size.lwd = 2,
                     ef.size.ticks = NULL,
                     ef.size.label = es$effect.name,
                     ef.size.dx = 0,
@@ -739,6 +773,7 @@ DurgaPlot <- function(es,
 
   # We allow TRUE/FALSE or colours to be specified for many values. TRUE is equivalent to a default colour
   .boolToDef <- function(arg, def) if (isTRUE(arg)) { def } else { arg }
+  .FALSEToVal <- function(arg, val) if (isFALSE(arg)) { val } else { arg }
   .show <- function(what) !isFALSE(what) && !is.null(what)
   .isColour <- function(c) tryCatch(is.matrix(grDevices::col2rgb(c)), error = function(e) FALSE)
   .colour <- function(what) if (.isColour(what)) { what } else { NA }
@@ -960,6 +995,8 @@ DurgaPlot <- function(es,
   if (.show(violin)) {
     violin <- .boolToDef(violin, defBorderPalette)
     borders <- .extend(violin)
+    # If fill is FALSE, pass in NA to specify no fill
+    violin.fill <- .FALSEToVal(violin.fill, NA)
     violin.fill <- .extend(.boolToDef(violin.fill, defFillPalette))
     violin.shape <- .extend(violin.shape)
     dx <- violin.dx
@@ -967,7 +1004,10 @@ DurgaPlot <- function(es,
       d <- densities[[i]]
       col <- violin.fill[i]
       border <- borders[i]
-      plotViolin(violin.shape[i], i + dx[i], d, col = col, border = border)
+      # Explicit parameters override values set in violin.params
+      violin.params["col"] <- NULL
+      violin.params["border"] <- NULL
+      do.call(plotViolin, c(list(violin.shape[i], i + dx[i], d, col = col, border = border), violin.params))
     }
   }
 
@@ -1008,7 +1048,8 @@ DurgaPlot <- function(es,
     } else {
       # Scatter the points
       x <- x + vipor::offsetX(data[[es$data.col]], as.numeric(data$.group.as.factor),
-                              method = points.method, varwidth = TRUE, width = points.spread)
+                              method = points.method, varwidth = TRUE, width = points.spread,
+                              adjust = points.adjust)
     }
     # Complicated way of calling is to allow user to pass in arbitrary parameters
     pch <- points.params[["pch"]] %||% 19
@@ -1085,20 +1126,23 @@ DurgaPlot <- function(es,
     # Handle default colours
     ef.size.col <- .boolToDef(ef.size, "black")
     violinCol <- .boolToDef(ef.size.violin, "grey40")
-    if (.show(ef.size.violin))
-      violinFill <- .boolToDef(ef.size.violin.fill, DurgaTransparent(violinCol, 0.8))
+    if (.show(ef.size.violin)) {
+      # To not fill, use col = NA
+      violinFill <- .FALSEToVal(ef.size.violin.fill, NA)
+      violinFill <- .boolToDef(violinFill, DurgaTransparent(violinCol, 0.8))
+    }
 
     # Install par settings for drawing effect size
     oldPars <- graphics::par(ef.size.params)
 
     if (ef.size.position == "right") {
       lineStartAt <- seq_len(nGroups) + ef.size.mean.line.dx
-      plotEffectSizesRight(es, plotDiffs[[1]], ef.size.col, ef.size.pch,
+      plotEffectSizesRight(es, plotDiffs[[1]], ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd,
                            .show(ef.size.violin), violinCol, violinFill, violin.width, ef.size.violin.shape, ef.size.violin.trunc,
                            ef.size.dx, ef.size.label, ef.size.ticks,
                            lineStartAt, ef.size.line.col, ef.size.line.lty, ef.size.line.lwd)
     } else if (ef.size.position == "below") {
-      plotEffectSizesBelow(es, plotDiffs, ef.size.col, ef.size.pch,
+      plotEffectSizesBelow(es, plotDiffs, ef.size.col, ef.size.pch, ef.size.lty, ef.size.lwd,
                            .show(ef.size.violin), violinCol, violinFill, violin.width, ef.size.violin.shape, ef.size.violin.trunc,
                            xlim, ef.size.dx, ef.size.label, ef.size.ticks,
                            ef.size.line.col, ef.size.line.lty, ef.size.line.lwd, group.dx,

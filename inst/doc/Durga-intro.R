@@ -171,6 +171,14 @@ DurgaPlot(d,
           central.tendency = FALSE,
           ef.size = FALSE, main = "Component shifts")
 
+## ----eval=FALSE---------------------------------------------------------------
+#  # Example snippet, make *.dx arguments relative to group.dx
+#  group.dx <- c(0.75, 0)  # Shift group 1 right, leave group 2 unchanged
+#  DurgaPlot(..., group.dx = group.dx,
+#            central.tendency.dx = group.dx + 0.1, # Shift mean & error bars right
+#            violin.dx = group.dx + c(-0.4, -0.5), # Shift violins left
+#            ef.size.dx = -0.5)
+
 ## ----fig.height=6, fig.width=8------------------------------------------------
 par(mar = c(5, 9, 3, 1) + 0.1)
 
@@ -214,6 +222,20 @@ DurgaPlot(d, ef.size.label = expression("log"[2]~"ratio"))
 d$group.differences[[1]]$label.print <- "log2 Sp 2:Sp 1"
 d
 
+
+## ----eval=FALSE---------------------------------------------------------------
+#  # Create a new function that calls effectsize::cohens_d and returns just the calculated statistic
+#  myCohens <- function(x1, x2) {
+#    # Note that we swap the arguments because Durga expects the calculation to be x2 - x1
+#    cd <- effectsize::cohens_d(x2, x1, pooled_sd = FALSE)
+#    # Extract and return just the Cohen's d value
+#    cd$Cohens_d
+#  }
+#  # Pass it in to DurgaDiff as the effect.type
+#  d <- DurgaDiff(petunia, 1, 2, effect.type = myCohens)
+#  
+#  # Specify the effect type label
+#  DurgaPlot(d, ef.size.label = expression("Cohen's d"))
 
 ## ----fig.height=5, fig.width=7------------------------------------------------
 par(mar = c(5, 4, 3, 1) + 0.1)

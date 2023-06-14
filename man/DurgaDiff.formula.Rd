@@ -27,11 +27,12 @@ individual must have the same ID. For non-paired data, do not specify an
 used as group labels for plotting or printing.}
     \item{\code{contrasts}}{Specify the pairs of groups to be compared. By default, all
 pairwise differences are generated. May be a single string, a vector of
-strings, or a matrix. See Details for more information.}
+strings, or a matrix. Specify \code{NULL} to avoid calculating any
+contrasts. See Details for more information.}
     \item{\code{effect.type}}{Type of group difference to be estimated. Possible types
 are: \code{"mean"}, difference in unstandardised group means;
-\code{"cohens"}, Cohen's d; \code{"hedges"}, Hedges' g. See Details for
-further information.}
+\code{"cohens"}, Cohen's d; \code{"hedges"}, Hedges' g; or a function. See
+Details for further information.}
     \item{\code{R}}{The number of bootstrap replicates. The default value of 1000 may
 need to be increased for large sample sizes; if \code{R <= nrow(x)}, an
 error such as "Error in bca.ci... estimated adjustment 'a' is NA" will be
@@ -56,11 +57,13 @@ A \code{DurgaDiff} object, which is a list containing:
   are: \code{mean}, \code{median}, \code{sd} (standard deviation), \code{se}
   (standard error of the mean), \code{CI.lower} and \code{CI.upper} (lower
   and upper confidence intervals of the mean, confidence level as set by the
-  \code{ci.conf} parameter) and \code{n} (group sample size.)}
+  \code{ci.conf} parameter) and \code{n} (group sample size)}
 
   \item{\code{group.differences}}{List of \code{DurgaGroupDiff} objects,
   which are \code{boot} objects with added confidence interval information.
-  See \code{\link[boot]{boot}} and \code{\link[boot]{boot.ci}}}
+  See \code{\link[boot]{boot}} and \code{\link[boot]{boot.ci}}. This element will be missing
+  if \code{contrasts} is empty or \code{NULL}}
+
   \item{\code{groups}}{Vector of group names}
   \item{\code{group.names}}{Labels used to identify groups}
   \item{\code{effect.type}}{Value of \code{effect.type} parameter}
@@ -119,8 +122,9 @@ Hedges' g, we apply Hedges' correction to the paired Cohen's d.
 Alternative effect types can be estimated by passing a function for
 \code{effect.type}. For unpaired data, the function must accept two
 parameters: the values from the two groups to be compared (group 2 and group
-1). For paired data, the function must accept a single argument; a vector of
-group 1 values - group 2 values.
+1), and return a single numeric value, the effect size. For paired data, the
+function must accept a single argument; a vector of group 1 values - group 2
+values, and return a single numeric value.
 
 Confidence intervals for the estimate are determined using bootstrap
 resampling, using the adjusted bootstrap percentile (BCa) method (see
