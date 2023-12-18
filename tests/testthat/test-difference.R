@@ -70,6 +70,9 @@ makePairedData <- function(addSomeNAs = FALSE, reverseGroups = FALSE) {
 }
 
 compareDiffs <- function(d1, d2, tolerance = 0.1) {
+  expect_equal(d1$groups, d2$groups)
+  expect_equal(d1$group.names, d2$group.names)
+  expect_equal(d1$effect.type, d2$effect.type)
   expect_equal(length(d1$group.differences), length(d2$group.differences))
   for (i in seq_len(length(d1$group.differences))) {
     pd1 <- d1$group.differences[[i]]
@@ -83,8 +86,241 @@ compareDiffs <- function(d1, d2, tolerance = 0.1) {
   }
 }
 
+plotWithBrackets <- function(d) {
+  ylim <- extendrange(d$data[[d$data.col]])
+  ylim[2] <- extendrange(ylim, f = nrow(d$group.statistics) * 0.05)[2]
+  labelFn <- function(diff) sprintf("%.2g %g%% CI [%.2g, %.2g]",diff$t0, diff$bca[1] * 100, diff$bca[4], diff$bca[5])
+  DurgaPlot(d, ef.size = FALSE, bty = "n", ylim = ylim) |>
+    DurgaBrackets(labels = labelFn)
+}
+
 ##########################################################################
 # Tests start here ####
+
+test_that("multiple groups + contrasts", {
+  n <- 30
+  df <- data.frame(group = c(rep(c("G1", "G2", "G3"), each = n)),
+                   group2 = c(rep(c("A", "B"), each = 3 * n / 2)),
+                   val = c(rnorm(n, 1), rnorm(n, 2), rnorm(n, 3)))
+  d <- expect_error(DurgaDiff(df, "val", c("group", "group2")), NA)
+  expect_equal(length(d$group.differences), 6)
+  # Group names should be compoiste groups after combining the two group columns
+  plotFn <- plotWithBrackets
+  plotFn <- identity
+  d <- expect_error(DurgaDiff(df, "val", c("group", "group2"), contrasts = c("G2, A - G1, A", "G3, B - G2, B", "G2, B - G2, A")), NA)
+  expect_equal(length(d$group.differences), 3)
+  # Attempting to use the comma-separated string version should fail due to ambiguity
+  expect_error(DurgaDiff(df, "val", c("group", "group2"), contrasts = c("G2, A - G1, A, G3, B - G2, B")))
+  # Matrix form should work
+  contrasts <- matrix(c("G2, A", "G1, A", "G3, B", "G2, B", "G2, B", "G2, A"), nrow = 2)
+  d <- DurgaDiff(df, "val", c("group", "group2"), contrasts = contrasts)
+  expect_equal(length(d$group.differences), 3)
+})
+
+test_that("wide to long", {
+  n <- 10
+  dfw <- data.frame(control = rnorm(n), treatment = rnorm(n, 0.2), id = seq_len(n))
+  dfl <- wideToLong(dfw, c("control", "treatment"))
+  expect_equal(nrow(dfl), 2 * n)
+  # The generated id values should be the same as ours
+  expect_equal(dfl$id.1, dfl$id)
+  # Group values should all be one of "control", "treatment"
+  expect_true(all(unique(dfl$group) %in% c("control", "treatment")))
+  # Specifying a NULL id col should be the same as not specifying one
+  dfln <- wideToLong(dfw, c("control", "treatment"), NULL)
+  expect_equal(dfln, dfl)
+
+  # Specifying an id column means a new one should not be generated
+  dfli <- wideToLong(dfw, c("control", "treatment"), "id")
+  expect_equal(names(dfli), c("id", "group", "value"))
+  expect_equal(unique(dfli$group), c("control", "treatment"))
+
+  # Unpaired in wide format
+  n1 <- 20
+  n2 <- 14
+  dfw <- data.frame(control = rnorm(n1), treatment = c(rnorm(n2, 0.2), rep(NA, n1 - n2)))
+  dfl <- wideToLong(dfw, c("control", "treatment"), NULL)
+  expect_equal(unique(dfl$group), c("control", "treatment"))
+
+  # Paired
+  dp <- DurgaDiff(dfw, groups = c("control", "treatment"), na.rm = TRUE)
+  expect_true(dp$paired.data)
+  # When paired, any ids without matched values a removed from the data set
+  expect_equal(sum(dp$data$group == "control"), min(n1, n2))
+  expect_equal(sum(dp$data$group == "treatment"), min(n1, n2))
+
+  # Unpaired
+  du <- DurgaDiff(dfw, groups = c("control", "treatment"), id.col = NULL, na.rm = TRUE)
+  expect_true(!du$paired.data)
+  # When unpaired, unmatched values remain, only NAs are removed
+  expect_equal(sum(du$data$group == "control"), n1)
+  expect_equal(sum(du$data$group == "treatment"), n2)
+
+  # 3 groups
+  n <- 20
+  df3 <- data.frame(control = rnorm(n), g1 = rnorm(n, 1), g2 = rnorm(n, 2))
+  d3 <- DurgaDiff(df3, groups = c("control", "g1", "g2"))
+  #DurgaPlot(d3, bty = "n") |> DurgaBrackets()
+  expect_equal(d3$group.names, c("control", "g1", "g2"))
+  expect_equal(unique(d3$data$group), c("control", "g1", "g2"))
+  expect_equal(length(d3$group.differences), 3)
+
+  du3 <- DurgaDiff(df3, groups = c("control", "g1", "g2"), id.col = NULL)
+  #DurgaPlot(du3, bty = "n") |> DurgaBrackets()
+  expect_equal(du3$group.names, c("control", "g1", "g2"))
+  expect_equal(unique(du3$data$group), c("control", "g1", "g2"))
+  expect_equal(length(du3$group.differences), 3)
+
+  # # How can I use wide format but include another column in the groups?
+  # dfw <- data.frame(control = rnorm(n), treatment = rnorm(n, 1.2), id = seq_len(n),
+  #                   species = sample(c("Sp 1", "Sp 2", "Sp 3"), n, replace = TRUE))
+  # # ANSWER: There is no builtin solution. First convert wide to long, then pass
+  # # to DurgaDiff and specify the 2nd group variable
+  # dfl <- wideToLong(dfw, c("control", "treatment"))
+  # DurgaDiff(dfl, "value", c("group", "species")) |> DurgaPlot()
+})
+
+test_that("Combine vars", {
+  df <- data.frame(v1 = c("A", "A", "B", "B"),
+                   v2 = c("C", "D", "C", "D"))
+  expect_equal(combineVariables(df, c("v1", "v2")), c("A & C", "A & D", "B & C", "B & D"))
+  df <- data.frame(a = rep(1:3, each = 4), b = rep(1:4, 3))
+  expect_equal(combineVariables(df, 1:2), c("1 & 1", "1 & 2", "1 & 3", "1 & 4", "2 & 1", "2 & 2", "2 & 3",
+                                            "2 & 4", "3 & 1", "3 & 2", "3 & 3", "3 & 4"))
+
+  # Pathological case. Ideally this test would pass, but it has not been implemented to work, so don't run the test
+  # df <- data.frame(t = c("a", "a",     "a & b", "b & c", "a"),
+  #                  s = c("b", "b & c", "c",     "c",     "b & c"))
+  # expect_true(all(table(combineVariables(df, 1:2)) == 1))
+})
+
+test_that("Group interactions", {
+  set.seed(1)
+  n <- 40
+  df2 <- data.frame(group = rep(c("A", "B"), each = n),
+                   sex = sample(c("Female", "Male"), 2 * n, replace = TRUE))
+  df2$val <- ifelse(df2$group == "A", 1, 2) +
+    ifelse(df2$sex == "Female", 1, 0) +
+    rnorm(2 * n)
+  par(mfrow = c(2, 2))
+
+  # Define interaction by specifying 2 group variables
+  da <- DurgaDiff(df2, "val", c("group", "sex"))
+  expect_equal(length(da$groups), 4)
+  expect_equal(length(da$group.differences), 6)
+  DurgaPlot(da, bty = "n", ylim = c(-1.5, 6), ef.size = FALSE, main = "Auto interaction") |> DurgaBrackets()
+  # Manual interaction
+  df2$group_sex <- combineVariables(df2, c("group", "sex"), ", ")
+  dm <- DurgaDiff(df2, "val", "group_sex")
+  expect_equal(length(dm$groups), 4)
+  expect_equal(length(dm$group.differences), 6)
+  DurgaPlot(dm, bty = "n", ylim = c(-1.5, 6), ef.size = FALSE, main = "Manual interaction") |> DurgaBrackets()
+
+  compareDiffs(da, dm)
+
+  # 3 groups
+  set.seed(1)
+  n <- 100
+  df3 <- data.frame(group = rep(c("A", "B"), each = n),
+                   sex = sample(c("Female", "Male"), 2 * n, replace = TRUE),
+                   filter = sample(c("Filter", "No filter"), 2 * n, replace = TRUE))
+  df3$val <- ifelse(df3$group == "A", 5, 7) +
+    ifelse(df3$sex == "Female", 1, 0) +
+    ifelse(df3$filter == "Yes", 0.6, 0) +
+    rnorm(2 * n)
+
+  da <- DurgaDiff(df3, "val", c("group", "sex", "filter"))
+  expect_equal(length(da$groups), 8)
+  expect_equal(length(da$group.differences), 28)
+  DurgaPlot(da, bty = "n", main = "Auto interaction")
+  # Manual interaction
+  df3$group_sex <- combineVariables(df3, c("group", "sex", "filter"), ", ")
+  dm <- DurgaDiff(df3, "val", "group_sex")
+  expect_equal(length(dm$groups), 8)
+  expect_equal(length(dm$group.differences), 28)
+  DurgaPlot(dm, bty = "n", main = "Manual interaction")
+
+  compareDiffs(da, dm)
+
+
+  # Formula interface
+  set.seed(1)
+  par(mfrow = c(1, 2))
+  # Define interaction by specifying 2 group variables
+  f2 <- expect_error(DurgaDiff(val ~ group*sex, df2), NA)
+  expect_equal(length(f2$groups), 4)
+  expect_equal(length(f2$group.differences), 6)
+  DurgaPlot(f2, bty = "n",  main = "Formula interface")
+  # Define interaction by specifying 3 group variables
+  f3 <- expect_error(DurgaDiff(val ~ group + sex + filter, df3), NA)
+  DurgaPlot(f3, bty = "n",  main = "Formula interface")
+})
+
+test_that("Paired vs unpaired", {
+  set.seed(1)
+  n <- 10
+  effSz <- 1
+  ind <- rnorm(n, 10, 10)
+  df <- data.frame(value = c(ind, ind + effSz + rnorm(n, 0, 1)),
+                   group = rep(c("A", "B"), each = n), id = rep(1:n, 2))
+  dpd <- DurgaDiff(df, "value", "group", "id", effect.type = "cohens d")
+  dud <- DurgaDiff(df, "value", "group", effect.type = "cohens d")
+  # Cohen's d should be identical for paired and unpaired
+  expect_equal(dpd$group.differences[[1]]$t0, dud$group.differences[[1]]$t0)
+  # CI width should be less for paired than unpaired
+  expect_lt(diff(dpd$group.differences[[1]]$bca[4:5]), diff(dud$group.differences[[1]]$bca[4:5]))
+
+  # Expect bias-correction to change a bit due to different degrees of freedom
+  dpg <- DurgaDiff(df, "value", "group", "id", effect.type = "hedges g")
+  dug <- DurgaDiff(df, "value", "group", effect.type = "hedges g")
+  expect_false(isTRUE(all.equal(dpg$group.differences[[1]]$t0, dug$group.differences[[1]]$t0)))
+  # CI width should be less for paired than unpaired
+  expect_lt(diff(dpg$group.differences[[1]]$bca[4:5]), diff(dug$group.differences[[1]]$bca[4:5]))
+
+  # Bias correction should have almost no effect for large sample sizes
+  n <- 500
+  ind <- rnorm(n, 10, 10)
+  df <- data.frame(value = c(ind, ind + effSz + rnorm(n, 0, 1)),
+                   group = rep(c("A", "B"), each = n), id = rep(1:n, 2))
+  dpg <- DurgaDiff(df, "value", "group", "id", effect.type = "hedges g")
+  dug <- DurgaDiff(df, "value", "group", effect.type = "hedges g")
+  # Don't expect identical but pretty close
+  expect_true(isTRUE(all.equal(dpg$group.differences[[1]]$t0, dug$group.differences[[1]]$t0, tolerance = 1e-4, scale = 1)))
+})
+
+test_that("Effect size visible", {
+  es <- 20
+  set.seed(1)
+  vA <- rnorm(10)
+  df <- data.frame(group = c(rep("A", 10), rep("B", 10)), val = c(vA, vA + es + rnorm(10, 0.5)), id = rep(1:10, 2))
+  # This requires a human to check that the plot is valid
+  expect_error(DurgaPlot(DurgaDiff(val ~ group, df, effect.type = "cohens d"), main = "Is effect size entirely visible?"), NA)
+  expect_error(DurgaPlot(DurgaDiff(val ~ group, df, id.col = "id", effect.type = "cohens d"), main = "Is effect size entirely visible?"), NA)
+
+  #plot(cohens_d(dabestr::dabest(df, group, val, idx = c("A", "B"))))
+  #plot(cohens_d(dabestr::dabest(df, group, val, idx = c("A", "B"), paired = TRUE, id.column = id)))
+})
+
+test_that("paired with groups", {
+  data <- structure(list(Spider = c("A1", "A11", "A12", "A13", "A14", "A2", "A3", "A4", "A5", "A6", "A7", "A9", "B2", "B3", "C1", "C2", "D3", "E1", "E10", "E11", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "F1", "F2", "F3", "G01", "G02", "G03 ", "G04", "G05", "G06", "G07", "G08 ", "G09", "G10", "G11", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G19", "G20", "H01", "H02", "H03", "H04", "H05", "H06 ", "H07", "H08", "H09", "H10", "H11", "H12", "H13", "H14", "H16", "I01", "I02", "I03", "I04", "I05", "I06", "I07", "I08", "I09", "I10", "I11", "A1", "A11", "A12", "A13", "A14", "A2", "A3", "A4", "A5", "A6", "A7", "A9", "B2", "B3", "C2", "D3", "E1", "E11", "E2", "E3", "E5", "E6", "E7", "E8", "E9", "F1", "F2", "F3", "G01", "G02", "G03 ", "G04", "G05", "G06", "G07", "G08 ", "G09", "G10", "G11", "G12", "G15", "G16", "G17", "G18", "G19", "H01", "H02", "H03", "H04", "H05", "H06 ", "H07", "H08", "H09", "H10", "H11", "H13", "H14", "H15", "H16", "I01", "I02", "I03", "I04", "I05", "I06", "I07", "I09", "I10", "I11", "A1", "A11", "A12", "A13", "A2", "A3", "A4", "A5", "A6", "A7", "A9", "B2", "B3", "C2", "D3", "E1", "E3", "E5", "E6", "E7", "E8", "E9", "F1", "F2", "F3", "G03 ", "G04", "G06", "G07", "G08 ", "G09", "G10", "G12", "G13", "G14", "G15", "G16", "G17", "G18", "G19", "G20", "H01", "H02", "H03", "H04", "H05", "H06 ", "H09", "H10", "H11", "H12", "H13", "H14", "H15", "I01", "I02", "I03", "I04", "I05", "I06", "I07", "I08", "I09", "I10", "I11", "A1", "A11", "A12", "A13", "A14", "A3", "A4", "A5", "A6", "A7", "A9", "B2", "B3", "C2", "E5", "E6", "E7", "E8", "E9", "F1", "F3", "G01", "G04", "G06", "G07", "G08 ", "G09", "G10", "H01", "H02", "H03", "H04", "H06 ", "H09", "H10", "H11", "H12", "H13", "H14", "H15"),
+                         Wrap = c(185.75, 81.25, 99.07, 301.11, 111.7, 141.6, 156.4, 276.14, 49.51, 278.94, 279.22, 170.69, 93.82, 663.66, 83.94, 155.05, 69.26, 81.62, 92.87, 36.92, 143.82, 59.84, 165.04, 56.52, 156.91, 69.26, 70.28, 99.11, 523.59, 111.91, 168.2, 631.32, 341.04, 110.86, 197.9, 289.96, 372.66, 423.38, 459.65, 120.76, 82.51, 151.3, 190.98, 68.71, 20.3, 54.18, 75.85, 80.64, 74.43, 36.4, 66.74, 108.52, 62.86, 89.06, 631.77, 219.78, 144.55, 62.01, 62.08, 371.95, 233.48, 135.79, 151.9, 210.16, 239.6, 347.78, 144.8, 177.46, 145.5, 124.84, 95.25, 119.38, 277.49, 77, 129.55, 164.2, 225.38, 131.59, 376.31, 147.63, 246.17, 148.48, 158.91, 149.49, 123.72, 131.69, 121.09, 121.72, 108.95, 224.66, 74.31, 143.31, 300.31, 318.36, 43.14, 92.9, 67.48, 131.74, 42.59, 76.07, 301.75, 38.75, 316.33, 95.66, 126.45, 171.76, 304.77, 105.25, 208.41, 257.78, 32.41, 193.61, 118.46, 90.07, 420.58, 151.14, 340.76, 77.67, 95.17, 124.56, 71.13, 130.84, 160.56, 350.49, 34.07, 468.27, 257.55, 117.44, 113.99, 95.45, 181.4, 145.99, 197.04, 139.07, 380.36, 131.72, 248.03, 297.9, 77.07, 72.37, 100.41, 641.88, 70.42, 91.82, 200.94, 83.34, 257.72, 194.93, 160.14, 104.9, 157.38, 146.97, 107.91, 197.39, 125.3, 509.2, 247.17, 343.11, 293.38, 385.48, 237.19, 256.04, 263.29, 129.2, 175.92, 86.63, 97.96, 97.59, 102.42, 204.43, 398.39, 111.3, 62.04, 64.15, 73.39, 7.04, 91.56, 190.14, 86.57, 57.65, 85.45, 98.11, 52.84, 43.77, 36.91, 134.45, 59.39, 365.75, 80.97, 156.96, 80.52, 142.83, 105.88, 83.21, 154.51, 151.05, 101.14, 124.24, 71.53, 183.64, 54.16, 100.55, 58.28, 59.27, 175.66, 195.94, 203.02, 112.22, 221.76, 176.28, 201.72, 64.77, 46.92, 87.95, 41.39, 67.25, 54.22, 45.99, 51.69, 38.44, 66.77, 68.12, 70.05, 197.7, 124.19, 475.43, 153.2, 143.39, 215.45, 152.27, 393.36, 108.23, 190.35, 123.31, 142.69, 111.12, 53.67, 105.46, 123.39, 119.8, 81.22, 60.74, 83.96, 95.81, 84.77, 170.54, 163.63, 156.01, 173.24, 161.43, 127.645, 164.02),
+                         Prey_difficulty = c("difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "easy", "easy", "easy", "easy", "easy", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult", "difficult")),
+                    class = "data.frame", row.names = c(NA, -252L))
+  ts14 <- c("A1", "A11", "A12", "A13", "A3", "A4", "A5", "A6", "A7", "A9",
+            "B2", "B3", "C2", "E5", "E6", "E7", "E8", "E9", "F1", "F3", "G04",
+            "G06", "G07", "G08 ", "G09", "G10", "H01", "H02", "H03", "H04",
+            "H06 ", "H09", "H10", "H11", "H13", "H14")
+  # Order of groups should not affect errors
+  expect_error(DurgaDiff(data[data$Spider %in% ts14, ], "Wrap", "Prey_difficulty", id = "Spider"), "5 Spiders")
+  expect_error(DurgaDiff(data[data$Spider %in% ts14, ], "Wrap", "Prey_difficulty", id = "Spider", groups = c("difficult", "easy")), "5 Spiders")
+  expect_error(DurgaDiff(data[data$Spider %in% ts14, ], "Wrap", "Prey_difficulty", id = "Spider", groups = c("easy", "difficult")), "5 Spiders")
+})
+
+# TODO
+# test_that("No CI", {
+#   df <- data.frame(val = rnorm(10000), grp = rep(c("G1", "G2"), exch = 5000))
+#   d <- DurgaDiff(df, 1, 2, R = 5000)
+# })
 
 test_that("transparency", {
   expect_equal(DurgaTransparent("red", 0.8), "#FF000033")
@@ -230,13 +466,13 @@ test_that("contrast plots", {
   d <- DurgaDiff(data, "Measurement", "Group", groups = groups)
   DurgaPlot(d, contrasts = c(`Diff` = "Group3 - Group2"), main = "Plot 1 labelled diff")
   DurgaPlot(d, contrasts = c(`Diff` = "Group2 - Group3"), mai = "Plot negative diff")
-  d <- DurgaDiff(data, "Measurement", "Group", groups = groups, effect.type = "cohens")
+  d <- DurgaDiff(data, "Measurement", "Group", groups = groups, effect.type = "cohens d")
   DurgaPlot(d, contrasts = c(`Diff` = "Group3 - Group2"), main = "Plot 1 Cohen's")
   DurgaPlot(d, contrasts = c(`Diff` = "Group2 - Group3"), mai = "Plot negative Cohen's")
   # Single contrast in diff
   d <- DurgaDiff(data, "Measurement", "Group", groups = c("Group3", "Group2"))
   DurgaPlot(d, main = "Restricted groups in diff")
-  d <- DurgaDiff(data, "Measurement", "Group", groups = c("Group3", "Group2"), effect.type = "cohens")
+  d <- DurgaDiff(data, "Measurement", "Group", groups = c("Group3", "Group2"), effect.type = "cohens d")
   DurgaPlot(d, main = "Restricted groups in diff Cohen's")
 })
 
@@ -285,20 +521,22 @@ test_that("print", {
   d <- makeES1()
   # This is a regex
   expected <- paste0("Bootstrapped effect size\\n",
-              "  Measurement ~ Group\\n",
-              "Groups:\\n",
-              "              mean   median       sd       se  CI\\.lower CI\\.upper  n\\n",
-              "Group1    122\\.9210 118\\.8367 21\\.31850 3\\.370750 116\\.10300 129\\.7390 40\\n",
-              "ZControl1 102\\.3007 103\\.2276 22\\.16668 3\\.504859  95\\.21141 109\\.3899 40\\n",
-              "Unpaired Mean difference \\(R = 1000, bootstrap CI method = bca\\):\\n",
-              "  ZControl1 - Group1: -20\\.6203, 95% CI \\[-30\\.[0-9]+, -10\\.[0-9]+\\]")
+                     "  Measurement ~ Group\\n",
+                     "Groups:\\n",
+                     "              mean   median       sd       se  CI\\.lower CI\\.upper  n\\n",
+                     "Group1    122\\.9210 118\\.8367 21\\.31850 3\\.370750 116\\.84544 130\\.4658 40\\n",
+                     "ZControl1 102\\.3007 103\\.2276 22\\.16668 3\\.504859  95\\.36523 108\\.6278 40\\n",
+                     "Unpaired Difference of means \\(R = 1000, bootstrap CI method = bca\\):\\n",
+                     "  ZControl1 - Group1: -20\\.6203, 95% CI \\[-29\\.[0-9]+, -11\\.[0-9]+\\]")
   expect_output(print(d), expected)
   # Print mismatched lines
-  # got <- capture.output(print(d))
-  # expLines <- gsub("\\\\", "", strsplit(expected, "\\\\n")[[1]])
-  # matched <- got == expLines
-  # print(got[!matched])
-  # print(expLines[!matched])
+  if (FALSE) {
+    got <- capture.output(print(d))
+    expLines <- gsub("\\\\", "", strsplit(expected, "\\\\n")[[1]])
+    matched <- got == expLines
+    print(got[!matched])
+    print(expLines[!matched])
+  }
 
   checkSummaryMatches <- function(d1, d2) {
     d1s <- capture.output(print(d1))
@@ -310,11 +548,13 @@ test_that("print", {
   }
 
   # Check that formula output matches non-formula
+  set.seed(1) # Avoid white-space differences caused by different printed precisions
   d1 <- DurgaDiff(petunia, 1, 2)
   d2 <- DurgaDiff(height ~ group, petunia)
   checkSummaryMatches(d1, d2)
 
   # Paired
+  set.seed(1) # Avoid white-space differences caused by different printed precisions
   d1 <- DurgaDiff(insulin, 1, 2, 3)
   d2 <- DurgaDiff(sugar ~ treatment, insulin, id.col = "id")
   checkSummaryMatches(d1, d2)
@@ -374,7 +614,7 @@ test_that("contrasts", {
   d <- DurgaDiff(data, "Measurement", "Group", contrasts = "")
 
   # Wildcard contrasts
-  d <- DurgaDiff(data, "Measurement", "Group", effect.type = "cohen", contrasts = "*")
+  d <- DurgaDiff(data, "Measurement", "Group", effect.type = "cohens d", contrasts = "*")
   ng <- length(unique(data$Group))
   expect_equal(length(d$group.differences), ng * (ng - 1) / 2)
 })
@@ -390,11 +630,11 @@ test_that("difference effect types", {
   # Check all effect types
   expect_error(DurgaDiff(df, effect.type = "wrong", data.col = 1, group.col = 2)) # Should throw an error
   expect_error(DurgaDiff(df, effect.type = "mean", data.col = 1, group.col = 2), NA)
-  expect_error(DurgaDiff(df, effect.type = "cohens", data.col = 1, group.col = 2), NA)
-  expect_error(DurgaDiff(df, effect.type = "hedges", data.col = 1, group.col = 2), NA)
+  expect_error(DurgaDiff(df, effect.type = "cohens d", data.col = 1, group.col = 2), NA)
+  expect_error(DurgaDiff(df, effect.type = "hedges g", data.col = 1, group.col = 2), NA)
   expect_error(DurgaDiff(df, effect.type = "mean", id.col = "id", data.col = 1, group.col = 2), NA)
-  expect_error(DurgaDiff(df, effect.type = "cohens", id.col = "id", data.col = 1, group.col = 2), NA)
-  expect_error(DurgaDiff(df, effect.type = "hedges", id.col = "id", data.col = 1, group.col = 2), NA)
+  expect_error(DurgaDiff(df, effect.type = "cohens d", id.col = "id", data.col = 1, group.col = 2), NA)
+  expect_error(DurgaDiff(df, effect.type = "hedges g", id.col = "id", data.col = 1, group.col = 2), NA)
 
   # Check unstandardised diff (diff of means)
   d <- DurgaDiff(df, data.col = 1, group.col = 2, effect.type = "mean")
@@ -406,7 +646,7 @@ test_that("difference effect types", {
   expect_gt(pwd$bca[5], realDiff)
 
   # Check Cohen's D
-  d <- DurgaDiff(df, data.col = 1, group.col = 2, effect.type = "cohens")
+  d <- DurgaDiff(df, data.col = 1, group.col = 2, effect.type = "cohens d")
   pwd <- d$group.difference[[1]]
   expect_equal(pwd$groups[1], "Group")
   expect_equal(pwd$groups[2], "Control")
@@ -416,7 +656,7 @@ test_that("difference effect types", {
   # Save Cohen's d for later
   cohensD <- pwd$t0
   # Swap groups
-  d <- DurgaDiff(df, groups = c("Group", "Control"), data.col = 1, group.col = 2, effect.type = "cohens")
+  d <- DurgaDiff(df, groups = c("Group", "Control"), data.col = 1, group.col = 2, effect.type = "cohens d")
   pwd <- d$group.difference[[1]]
   expect_equal(pwd$groups[1], "Control")
   expect_equal(pwd$groups[2], "Group")
@@ -425,19 +665,19 @@ test_that("difference effect types", {
   expect_gt(pwd$bca[5], -0.918991)
 
   # Check Hedges' g
-  d <- DurgaDiff(df, data.col = 1, group.col = 2, effect.type = "hedges")
+  d <- DurgaDiff(df, data.col = 1, group.col = 2, effect.type = "hedges g")
   pwd <- d$group.difference[[1]]
   expect_equal(pwd$groups[1], "Group")
   expect_equal(pwd$groups[2], "Control")
   # Estimate Hedges' g by correcting Cohen's d (Lakens 2013, p. 3 eqn 4)
   n1 <- d$group.statistics[2,"n"]
   n2 <- d$group.statistics[1,"n"]
-  hedgesG <- cohensD * (1 - 3 / (4 * (n1 + n2) - 9))
+  hedgesG <- cohensD * (1 - 3 / (4 * (n1 + n2) - 9)) # Approximate method
   expect_equal(pwd$t0, hedgesG, tolerance = 0.0001)
   expect_lt(pwd$bca[4], 0.918991) # Should be positive but small
   expect_gt(pwd$bca[5], 0.918991)
   # Swap groups
-  d <- DurgaDiff(df, groups = c("Group", "Control"), data.col = 1, group.col = 2, effect.type = "hedges")
+  d <- DurgaDiff(df, groups = c("Group", "Control"), data.col = 1, group.col = 2, effect.type = "hedges g")
   pwd <- d$group.difference[[1]]
   expect_equal(pwd$groups[1], "Control")
   expect_equal(pwd$groups[2], "Group")
@@ -456,7 +696,7 @@ test_that("difference effect types", {
   expect_gt(pwd$bca[5], realDiff)
 
   # Check Cohen's D
-  d <- DurgaDiff(df, data.col = 1, group.col = 2, id.col = 3, effect.type = "cohens")
+  d <- DurgaDiff(df, data.col = 1, group.col = 2, id.col = 3, effect.type = "cohens d_z")
   pwd <- d$group.difference[[1]]
   expect_equal(pwd$groups[1], "Group")
   expect_equal(pwd$groups[2], "Control")
@@ -466,13 +706,13 @@ test_that("difference effect types", {
   expect_lt(pwd$bca[4], cohensD) # Should be positive but small
   expect_gt(pwd$bca[5], cohensD)
 
-  d <- DurgaDiff(df, data.col = 1, group.col = 2, id.col = 3, effect.type = "hedges")
+  d <- DurgaDiff(df, data.col = 1, group.col = 2, id.col = 3, effect.type = "hedges g_z")
   pwd <- d$group.difference[[1]]
   expect_equal(pwd$groups[1], "Group")
   expect_equal(pwd$groups[2], "Control")
-  # Estimate Hedges' g by correcting Cohen's d (Lakens 2013, p. 3 eqn 4)
-  hedgesG <- cohensD * (1 - 3 / (4 * n - 9))
-  expect_equal(pwd$t0, hedgesG)
+  # Estimate Hedges' g by using Hedges' approximate method to correct Cohen's d (Cummings 2012, eqn 11.13)
+  hedgesG <- cohensD * (1 - (3 / (4 * (n - 1) - 1)))
+  expect_equal(pwd$t0, hedgesG, tolerance = 1.5 * 10e-6)
   expect_lt(pwd$bca[4], hedgesG) # Should be positive but small
   expect_gt(pwd$bca[5], hedgesG)
 })
@@ -491,8 +731,8 @@ test_that("group factors", {
 
   # Check all effect types
   expect_error(DurgaDiff(df, effect.type = "mean", data.col = 1, group.col = 2), NA)
-  expect_error(DurgaDiff(df, effect.type = "cohens", data.col = 1, group.col = 2), NA)
-  expect_error(DurgaDiff(df, effect.type = "hedges", data.col = 1, group.col = 2), NA)
+  expect_error(DurgaDiff(df, effect.type = "cohens d", data.col = 1, group.col = 2), NA)
+  expect_error(DurgaDiff(df, effect.type = "hedges g", data.col = 1, group.col = 2), NA)
   expect_error(DurgaDiff(df, id.col = "id", data.col = 1, group.col = 2), NA)
 
 })
@@ -867,7 +1107,7 @@ test_that("custom effect axis", {
                     "Medium positive effect" = 0.5, "Large positive effect" = 0.8)
 
 
-  d <- DurgaDiff(df, effect.type = "cohens", data.col = 1, group.col = 2)
+  d <- DurgaDiff(df, effect.type = "cohens d", data.col = 1, group.col = 2)
   op <- par(mar = c(5, 4, 4, 10) + 0.1)
   on.exit(par(op))
   expect_error(DurgaPlot(d, ef.size.ticks = ef.size.ticks, ef.size.params = list(las = 1), ef.size.label = "", main = "Cohen's with custom labels"), NA)
@@ -960,6 +1200,7 @@ test_that("Grouped plot", {
   op <- par(mar = c(4, 5, 1, 10.5) + 0.1, mfrow = c(2, 1))
   on.exit(par(op))
   cols <- RColorBrewer::brewer.pal(4, "Dark2")
+  set.seed(1)
   for (i in 1:2) {
 
     n <- 6
@@ -1043,8 +1284,8 @@ test_that("plot miscellanea", {
 test_that("CI", {
 
   x <- rnorm(200)
-  CI90 <- CI(x, .9)
-  CI95 <- CI(x, .95)
+  CI90 <- meanCI(x, .9)
+  CI95 <- meanCI(x, .95)
   expect_lt(CI95[1], mean(x))
   expect_lt(CI95[1], CI90[1])
   expect_gt(CI95[2], mean(x))
@@ -1182,8 +1423,8 @@ test_that("Formula", {
 
   op <- par(mfrow = c(1, 2))
   on.exit(par(op))
-  DurgaPlot(DurgaDiff(valVar ~ group, df, id.col = "id", groups = c("Control", "Group")), main = "Formula interface")
-  DurgaPlot(DurgaDiff(df, "val", "group", "id", groups = c("Control", "Group")), main = "Standard interface")
+  DurgaPlot(DurgaDiff(valVar ~ group, df, id.col = "id", groups = c("Control", "Group")), main = "Formula interface, paired")
+  DurgaPlot(DurgaDiff(df, "val", "group", "id", groups = c("Control", "Group")), main = "Standard interface, paired")
 
   # More complicated formulae
   DurgaPlot(DurgaDiff(log(valVar) ~ group, df), main = "Formula interface")
@@ -1224,7 +1465,9 @@ test_that("custom stat", {
   dc1 <- DurgaDiff(df, 1, 2, groups = c("A1", "A2"), effect.type = function(x1, x2) { median(x2) - median(x1) })
 
   # Many groups
+  set.seed(1)
   dd <- DurgaDiff(df, 1, 2, contrasts = ". - A1")
+  set.seed(1)
   dc <- DurgaDiff(df, 1, 2, contrasts = ". - A1", effect.type = function(x1, x2) { median(x2) - median(x1) })
 
   # Check that group details are the same, pairwise differences are different
@@ -1293,7 +1536,7 @@ test_that("ef size ticks", {
   DurgaPlot(d, main = "Custom ef ticks", ef.size.ticks = c(30, 0, -50))
   DurgaPlot(d, contrasts = "Group2 - ZControl1", main = "Custom ef ticks", ef.size.ticks = c(30, 0, -50))
 
-  d <- DurgaDiff(data, 1, 2, groups = c("ZControl1", "Group1", "Group2"), effect.type = "cohens")
+  d <- DurgaDiff(data, 1, 2, groups = c("ZControl1", "Group1", "Group2"), effect.type = "cohens d")
   DurgaPlot(d, main = "Custom ef ticks", ef.size.ticks = c(-2, 0, 1))
   expect_error(DurgaPlot(d, contrasts = "Group2 - ZControl1", main = "Custom ef ticks", ef.size.ticks = c(-2, 0, 1)), NA)
 })
@@ -1307,7 +1550,7 @@ test_that("ef size labels", {
   DurgaPlot(d, main = "Custom ef labels", ef.size.ticks = c("Big" = 30, "None" = 0, "Huge" = -50), ef.size.params = list(las = 1))
   DurgaPlot(d, contrasts = "Group2 - ZControl1", main = "Custom ef labels", ef.size.ticks = c("Big" = 30, "None" = 0, "Huge" = -50), ef.size.params = list(las = 1))
 
-  d <- DurgaDiff(data, 1, 2, groups = c("ZControl1", "Group1", "Group2"), effect.type = "cohens")
+  d <- DurgaDiff(data, 1, 2, groups = c("ZControl1", "Group1", "Group2"), effect.type = "cohens d")
   DurgaPlot(d, main = "Custom ef labels", ef.size.ticks = c("Huge" = -2, "None" = 0, "Big" = 1), ef.size.params = list(las = 1))
   expect_error(DurgaPlot(d, contrasts = "Group2 - ZControl1", main = "Custom ef labels", ef.size.ticks = c("Huge" = -2, "None" = 0, "Big" = 1), ef.size.params = list(las = 1)), NA)
 })
@@ -1319,7 +1562,7 @@ test_that("ef size symbology", {
 
   d <- DurgaDiff(data, 1, 2, groups = c(Control = "ZControl1", "Group1", "Group2"))
   expect_error(DurgaPlot(d, main = "Custom ef symbology", ef.size = 2:3, ef.size.lty = 3:2, ef.size.lwd = c(4, 2)), NA)
-  d <- DurgaDiff(data, 1, 2, groups = c(Control = "ZControl1", "Group1"), effect.type = "cohens")
+  d <- DurgaDiff(data, 1, 2, groups = c(Control = "ZControl1", "Group1"), effect.type = "cohens d")
   expect_error(DurgaPlot(d, main = "Custom ef symbology", ef.size.lty = 2, ef.size.lwd = 4), NA)
 })
 
@@ -1328,7 +1571,7 @@ test_that("pathological data", {
   n <- 10000
   df <- data.frame(Value = c(rnorm(n), 500, rnorm(n), -500),
                    group = rep(c("G1", "G2"), each = n + 1))
-  d <- DurgaDiff(df, 1, 2, contrasts = NULL)
+  d <- DurgaDiff(df, 1, 2, contrasts = NULL, R = NA) # Don't bootstrap anything
   expect_error(DurgaPlot(d, main = "Pathological case - don't crash!"), NA)
 })
 
@@ -1350,4 +1593,103 @@ test_that("points layout", {
   expect_error(DurgaPlot(d, main = "Adjust = 0.7", ef.size = FALSE, points.adjust = 0.7, violin.adj = 0.7), NA)
   expect_error(DurgaPlot(d, main = "Method = tukey", ef.size = FALSE, points.method = "tukey"), NA)
   expect_error(DurgaPlot(d, main = "Method = overplot", ef.size = FALSE, points.method = "overplot"), NA)
+})
+
+test_that("missing right axis", {
+  # Bug: Can fail with very small group sizes, because bootstrap wasn't stratified
+
+  stats <- structure(list(cat = c("RelearningwalksOld", "RelearningwalksOld",
+                                  "RelearningwalksOld", "RelearningwalksOld", "RelearningwalksOld",
+                                  "RelearningwalksOld", "RelearningNew", "RelearningNew", "RelearningNew",
+                                  "RelearningNew", "RelearningNew"),
+                          `Convex hull area` = c(5749.50993182344,
+                                                 12052.2167954142, 11692.8373439029, 5327.12611957551, 434.590489399867,
+                                                 19118.6301846389, 7934.00774651262, 28646.8325343417, 25339.7006681887,
+                                                 11880.8673679235, 26535.4117772832),
+                          `Max displacement` = c(8.41844123108767,
+                                                 6.34767201343218, 25.188225965698, 6.20186762835405, 2.10714057756224,
+                                                 5.98568895263556, 11.3602307617808, 15.453027281305, 11.3599509921636,
+                                                 18.5884235814962, 21.898981986908),
+                          Duration = c(25.02, 43.14, 25.6, 44.76, 13.1, 55.48, 8.28, 9.52, 22, 9.28, 11.96)),
+                     row.names = c(NA, -11L), class = "data.frame")
+
+  learningSheets <- c(`Old nest relearning walks` = "RelearningwalksOld", `New nest relearning walks` = "RelearningNew")
+  set.seed(1)
+  d <- DurgaDiff(stats, "Convex hull area", "cat", groups = learningSheets)
+  expect_error(DurgaPlot(d, main = "Effect size axis present?"), NA)
+
+  data <- data.frame(Val = rnorm(10), Group = c(1, 1, rep(2, 8)))
+  expect_error(DurgaDiff(data, 1, 2), NA)
+})
+
+test_that("Wide format data", {
+  n <- 10
+  wide <- data.frame(Control = rnorm(n, 10), Treatment = rnorm(n, 11), Mass = rnorm(n, 2, .4))
+  l <- stats::reshape(wide, direction = "long",
+                      varying = list(c("Control", "Treatment")),
+                      idvar = "Specimen",
+                      v.names = "Measurement", # Name of the value column
+                      timevar = "Condition", # Name of the group column
+                      times = c("Control", "Treatment"))
+  d1 <- DurgaDiff(l, "Measurement", "Condition")
+  d2 <- DurgaDiff(wide, id.col = "Specimen", groups = c("Control", "Treatment"))
+  par(mfrow = c(2, 2))
+  DurgaPlot(d1, main = "Manual wide to long")
+  expect_error(DurgaPlot(d2, main = "Auto wide to long"), NA)
+
+  # 3 groups
+  n <- 20
+  df3 <- data.frame(Control = rnorm(n, 10),
+                    Treatment1 = rnorm(n, 11),
+                    Treatment2 = rnorm(n, 11.1, .4),
+                    Treatment3 = rnorm(n, 9, 2))
+  d <- DurgaDiff(df3, id.col = "Id", groups = c("Control", "Treatment1", "Treatment2", "Treatment3"))
+  DurgaPlot(d, main = "Paired - multiple groups", left.ylab = "Mass (g)")
+  DurgaPlot(d, main = "Paired - multiple groups, contrasts", left.ylab = "Mass (g)",
+            contrasts = "Treatment1 - Control, Treatment2 - Treatment1, Treatment3 - Treatment2")
+
+  # Id column that isn't unique
+  df <- data.frame(id = rep(1:5, each = 2), Control = rnorm(10, 10), Treatment = rnorm(10, 11))
+  expect_error(DurgaDiff(df, id.col = "id", groups = c("Control", "Treatment")))
+
+  # Id column not specified
+  df <- data.frame(Control = rnorm(10, 10), Treatment = rnorm(10, 11))
+  d <- DurgaDiff(df, groups = c("Control", "Treatment"))
+  expect_true(d$paired.data)
+
+  # Existing id column not specified
+  df <- data.frame(id = sample(10), Control = rnorm(10, 10), Treatment = rnorm(10, 11))
+  d <- DurgaDiff(df, groups = c("Control", "Treatment"))
+  expect_true(d$paired.data)
+})
+
+test_that("mapY fn", {
+  my <- buildMapYFn(c(0, 1), c(0, 1))
+  expect_equal(my(0), 0)
+  expect_equal(my(1), 1)
+  expect_equal(my(2), 2)
+  expect_equal(my(-2), -2)
+
+  my <- buildMapYFn(c(1, 2), c(2, 1))
+  expect_equal(my(1), 2)
+  expect_equal(my(2), 1)
+  expect_equal(my(3), 0)
+
+  my <- buildMapYFn(c(1, 0), c(1, 0))
+  expect_equal(my(0), 0)
+  expect_equal(my(1), 1)
+  expect_equal(my(2), 2)
+  expect_equal(my(-2), -2)
+})
+
+test_that("group means", {
+  # Should a 2-sample group generate an error because the group mean CI can't be estimated?
+  # No, because sometimes people have 2 sample groups and can't get more data
+  df <- data.frame(val = c(rnorm(2), rnorm(4, 1)),
+                           group = c("A", "A", "B", "B", "B", "B"))
+  d <- expect_error(DurgaDiff(df, "val", "group"), NA)
+  expect_true(is.na(d$group.statistics[1, "CI.lower"]))
+  expect_true(is.na(d$group.statistics[1, "CI.upper"]))
+  expect_true(!is.na(d$group.statistics[2, "CI.lower"]))
+  expect_true(!is.na(d$group.statistics[2, "CI.upper"]))
 })

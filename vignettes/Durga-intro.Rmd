@@ -23,10 +23,12 @@ This vignette shows some example Durga plots. Each plot is preceded by the code 
 
 ## Effect size estimation
 
-Before plotting your data, you must estimate the differences in group means by calling `DurgaDiff`. Your raw data should be in a data frame (or similar), with one observation per row - this is known as _long format_ data. The data frame must contain a column for the measurement or value being analysed, and another for the group or treatment. In addition, paired or repeated measures data requires an ID column to match measurements for the same specimen/individual. For example, within the `insulin` data set, the value being measured - blood sugar level - is recorded in the column `sugar` (specified in the `DurgaDiff` call by passing the argument `data.col = "sugar"`); treatments are `"before"` and `"after"` in the `treatment` column (`group.col = "treatment"`); and the identity of the individual (rabbit) being tested is given in the `id` column (`id.col = "id"`). The blood sugar level of each rabbit was tested before and after treatment with insulin, so for each rabbit, there is a row with the `before` sugar level, and another with the `after` sugar level.
+### Long format data
+
+Before plotting your data, you must estimate the differences in group means by calling `DurgaDiff`. Your raw data should be in a data frame (or similar) in either _long_ or _wide_ format. A long format data frame contains one observation per row, a column for the measurement or value being analysed, and another column for the group or treatment. In addition, paired or repeated measures data requires an ID column to match measurements for the same specimen/individual. For example, within the `insulin` data set, the value being measured - blood sugar level - is recorded in the column `sugar` (specified in the `DurgaDiff` call by passing the argument `data.col = "sugar"`); treatments are `"before"` and `"after"` in the `treatment` column (`group.col = "treatment"`); and the identity of the individual (rabbit) being tested is given in the `id` column (`id.col = "id"`). The blood sugar level of each rabbit was tested before and after treatment with insulin, so for each rabbit, there is a row with the `before` sugar level, and another with the `after` sugar level. Both long and wide format can be used to represent paired and unpaired data, however long format is most appropriate for unpaired data.
 
 ```{r} 
-# Inspect the insulin data set
+# Inspect the insulin data set, paired data in long format
 head(insulin[insulin$id < 4, ])
 
 # Calculate differences in group means
@@ -34,12 +36,30 @@ d <- DurgaDiff(insulin, data.col = "sugar", group.col = "treatment", id.col = "i
 d
 ```
 
-You may alternatively specify your data with a formula. Formulae allow a little more flexibility when specifying your model, but the end results are equivalent. The formula must be specified as `<data variable> ~ <group variable>`. For paired data, you must specify the `id` column using the `id.col` argument.
+### Formula interface
+
+When your data set is in long format, you may alternatively identify your data with a formula. The formula interface allows a little more flexibility when specifying your model, but the end results are equivalent. The formula must be specified as `<data variable> ~ <group variable>`. The data table must be in long format. For paired data, specify the `id` column using the `id.col` argument.
 
 ```{r} 
 # Use a formula to define the model
 DurgaDiff(sugar ~ treatment, insulin, id.col = "id")
 ```
+
+### Wide format data
+
+DurgaDiff also accepts data in _wide format_. A wide format data frame contains a measurement column for each group. For example, an experiment with a control and a treatment might comprise a column named `control` and another named `treatment`. To pass wide format data to `DurgaDiff`, do not specify the `data.col` or `group.col` arguments. Instead, you must identify the groups in your data with the `groups` argument. Each group must be the name of a column in the data frame. Wide format may be a natural way to represent paired data, as each row represents a  specimen. Wide format is not as appropriate for unpaired data, as a single row will contain measurements from two (or more) unrelated specimens, although Durga will handle it. To use wide format with unpaired data, specify `id.col = NULL`. If your groups have different sample sizes, you will also have to specify `na.rm = TRUE`.
+
+```{r} 
+# Inspect the wide insulin data set
+head(insulin.wide)
+
+# Calculate differences in group means
+(d <- DurgaDiff(insulin.wide, groups = c("sugar.before", "sugar.after")))
+```
+
+### Effect types
+
+Durga can estimate unstandardised or various standardised group differences, which are specified using the DurgaDiff parameter `effect.type`. Chapter 11, Cohen's d in Cumming (2012) is a good reference for understanding standardised effect sizes and the importance of choosing the appropriate standardiser. The online help for DurgaDiff summarises the effect types that are built-in to Durga.
 
 ## Plotting
 
@@ -106,6 +126,24 @@ DurgaPlot(d,
           box = TRUE, box.fill = FALSE)
 ```
 
+If you need greater control over the display of the group labels, for example to display in italics or bold, set the `group.names` field in the DurgaDiff object. It must be a vector of characters or expressions, one for each group.
+
+```{r fig.height=4, fig.width=5}
+# No title on this plot, so reduce the top margin size
+par(mar = c(5, 4, 1, 1) + 0.1)
+
+# Immature males are yellow, mature are red. Display juveniles first, and label
+# with colour rather than developmental stage
+d <- DurgaDiff(mass ~ maturity, damselfly, na.rm = TRUE,
+               groups = c("Juveniles" = "juvenile", "Adults" = "adult"))
+d$group.names <- c(expression(italic("Juveniles")), expression(bold("Adults")))
+DurgaPlot(d, 
+          # Custom y-axis label
+          left.ylab = "Body mass (mg)", 
+          # Specify the colours to (approximately) match the data
+          group.colour = c("orange", "red"), 
+          box = TRUE, box.fill = FALSE)
+```
 
 ### Colours
 
@@ -167,7 +205,7 @@ DurgaPlot(d, bar = TRUE, error.bars.type = "SD", points = FALSE,
 ```
 
 
-### Multiple effect sizes
+### Plotting multiple effect sizes
 
 The default behaviour of `DurgaDiff` is to calculate differences between all pairs of groups; each difference is a _contrast_ and has an estimated effect size with confidence interval. When plotted, each of multiple effect sizes is positioned below the first group in the contrast. This can cause layout problems when one group participates in multiple contrasts. For example, the iris dataset (available within standard R) contains three species: `setosa`, `versicolor` and `virginica`, hence three possible contrasts: `virginica - versicolor`, `virginica - setosa` and `versicolor - setosa`. If all three effect sizes are plotted, two of them (`virginica - versicolor` and `virginica - setosa`) will be positioned at the same horizontal location, resulting in superimposed text and an illegible graph (panel <span style="color:brown">__a)__</span> below)!
 
@@ -180,7 +218,7 @@ There are several ways around this problem:
 
 There is no single best solution to this problem. The appropriate method depends on your data and the information that you wish to communicate.
 
-To avoid this problem in default plots, the default behaviour of `DurgaPlot` is to assume that the first group is a control, and then show the differences between all subsequent groups and the control (method __1.__). This behaviour prevents effect sizes from overwriting each other, but may exclude pertinant data from the plot (panel <span style="color:brown">__b)__</span> below).
+To avoid this problem in default plots, the default behaviour of `DurgaPlot` is to assume that the first group is a control, and then show the differences between all subsequent groups and the control (method __1.__). This behaviour prevents effect sizes from overwriting each other, but may exclude pertinent data from the plot (panel <span style="color:brown">__b)__</span> below).
 
 To change the default contrast selection, specify the `contrasts` argument to either `DurgaDiff` or `DurgaPlot`. Contrasts are specified as `"<group> - <group>, <group> - <group>"`, so to apply method __2.__ to the `iris` dataset, you could specify `contrasts = c("virginica - setosa", "versicolor - setosa", "setosa - versicolor")`. This differs from the default behaviour by also plotting the contrast `"setosa - versicolor"`. Note that if the contrast `"versicolor - setosa"` were specified rather than `"setosa - versicolor"`, the effect size would be shown at the same location as the `"versicolor - setosa"` effect size, hence failing to solve the problem.
 
@@ -304,10 +342,10 @@ effectSizes <- c("No effect" = 0, "Large positive effect" = 0.8, "Huge positive 
 # Give the groups friendly names
 groups <- c("Self" = "self_fertilised", "Westerham" = "westerham_cross", "Inter" = "inter_cross")
 
-# Calculate Cohen's d rather than unstandardised difference in means
-d <- DurgaDiff(petunia, 1, 2, effect.type = "cohens", groups = groups)
+# Calculate bias-corrected Cohen's d, named Hedges' g, rather than unstandardised difference in means
+d <- DurgaDiff(petunia, 1, 2, effect.type = "hedges g", groups = groups)
 
-DurgaPlot(d, violin = FALSE, main = "Cohen's d, labelled effect size", 
+DurgaPlot(d, violin = FALSE, main = "Hedges' g, labelled effect size", 
           points.method = "jitter", 
           # Use our ticks and labels instead of default
           ef.size.ticks = effectSizes, 
@@ -319,7 +357,7 @@ DurgaPlot(d, violin = FALSE, main = "Cohen's d, labelled effect size",
 
 ### Custom statistics
 
-Durga provides a fixed set of effect type statistics that can be used, however sometimes a different statistic is required. For example, we may wish to compare measurements of some organ or structure to know whether they have increased or decreased in size, and by how much, in which case we may decide to use log~2~ ratio as our statistic. log~2~ ratio has a straightforward interpretation: 0 means no difference, 1 means double the size, 2 means four-times the size, -1 means half the size, and so on.
+Durga provides a fixed set of effect type statistics that can be used, however sometimes a different statistic is required. For example, we may wish to compare measurements of some organ or structure to know whether they have increased or decreased in size, and by how much, in which case we may decide to use log~2~ ratio as our statistic. log~2~ ratio has a straightforward interpretation: 0 means no difference, 1 means group 1 is double the size of group 2 ($2^1$), 2 means group 1 is four-times the size ($2^2$), -1 means group 2 is double the size of group 1 ($-2^1$), and so on.
 
 ```{R fig.height=4.5, fig.width=6}
 # Define a function that calculates the statistic for two vectors
@@ -345,19 +383,19 @@ d
 
 ```
 
-The Durga implementation of Cohen's d uses pooled standard deviation, so what if you need to Cohen's d with averaged standard deviations instead? The following example shows one way to use the `cohens_d` function from the [effectsize](https://easystats.github.io/effectsize/index.html) R package with Durga.
+Durga implements a variety of standardisers, but what if you wish to calculate an effect size that is not implemented by Durga? The following example shows one way to use the `cohens_d` function from the [effectsize](https://easystats.github.io/effectsize/index.html) R package with Durga.
 
 
 ```{R eval=FALSE}
 # Create a new function that calls effectsize::cohens_d and returns just the calculated statistic 
-myCohens <- function(x1, x2) {
+myCohensAv <- function(x1, x2) {
   # Note that we swap the arguments because Durga expects the calculation to be x2 - x1
   cd <- effectsize::cohens_d(x2, x1, pooled_sd = FALSE) 
   # Extract and return just the Cohen's d value
   cd$Cohens_d
 }
 # Pass it in to DurgaDiff as the effect.type
-d <- DurgaDiff(petunia, 1, 2, effect.type = myCohens)
+d <- DurgaDiff(petunia, 1, 2, effect.type = myCohensAv)
 
 # Specify the effect type label
 DurgaPlot(d, ef.size.label = expression("Cohen's d"))
@@ -495,3 +533,8 @@ The source code for Durga is available at [github.com/KhanKawsar/EstimationPlot]
 The Durga [GitHub page](https://github.com/KhanKawsar/EstimationPlot) has additional information such as how to install the latest development version of Durga.
 
 
+## References
+
+- Cumming, G. (2012). Understanding the new statistics : effect sizes, confidence intervals, and meta-analysis (1st ed.). New York: Routledge.
+
+- Khan, M. K., & McLean, D. J. (2023). Durga: An R package for effect size estimation and visualisation. bioRxiv, 2023.2002.2006.526960. [doi:10.1101/2023.02.06.526960](https://doi.org/10.1101/2023.02.06.526960)

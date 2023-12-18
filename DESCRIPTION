@@ -1,8 +1,8 @@
 Package: Durga
 Type: Package
 Title: Effect Size Estimation and Visualisation
-Version: 1.1.0
-Date: 2023-06-14
+Version: 2.0
+Date: 2023-12-18
 Authors@R: c(person("Kawsar", "Khan", email = "bmbkawsar@gmail.com", role = c("aut"),
                     comment = c(ORCID = "0000-0003-1795-1315")),
              person("Jim", "McLean", email = "jim_mclean@optusnet.com.au", role = c("aut", "cre"),
@@ -27,9 +27,9 @@ VignetteBuilder: knitr
 BuildVignettes: true
 Depends: R (>= 2.10)
 NeedsCompilation: no
-Packaged: 2023-06-14 12:45:27 UTC; 87054612
+Packaged: 2023-12-18 00:43:26 UTC; 87054612
 Author: Kawsar Khan [aut] (<https://orcid.org/0000-0003-1795-1315>),
   Jim McLean [aut, cre] (<https://orcid.org/0000-0001-6229-7063>)
 Maintainer: Jim McLean <jim_mclean@optusnet.com.au>
 Repository: CRAN
-Date/Publication: 2023-06-14 13:02:05 UTC
+Date/Publication: 2023-12-18 01:10:02 UTC

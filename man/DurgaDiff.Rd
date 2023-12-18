@@ -12,9 +12,9 @@ DurgaDiff(x, ...)
   data.col,
   group.col,
   id.col,
-  groups = sort(unique(x[[group.col]])),
+  groups,
   contrasts = "*",
-  effect.type = c("mean", "cohens", "hedges"),
+  effect.type = "mean",
   R = 1000,
   boot.params = list(),
   ci.conf = 0.95,
@@ -30,40 +30,48 @@ formula (see \code{\link{DurgaDiff.formula}}).}
 \item{...}{Ignored}
 
 \item{data.col}{Name (character) or index (numeric) of the column within
-\code{data} containing the measurement data.}
+\code{x} containing the measurement data.}
 
-\item{group.col}{Name or index of the column within \code{data} containing
-the values to group by.}
+\item{group.col}{Name or index of the column within \code{x} containing
+the values to group by. May be a vector of column names/indices, in
+which case values from each column are concatenated to define groups.}
 
-\item{id.col}{Specify for paired data/repeated measures only. Name or index
-of ID column for repeated measures/paired data. Observations for the same
-individual must have the same ID. For non-paired data, do not specify an
-\code{id.col}, (or use \code{id.col = NA}).}
+\item{id.col}{Specify for paired data/repeated measures/with-subject
+comparisons only. Name or index of ID column for repeated measures/paired
+data. Observations for the same individual must have the same ID. For
+non-paired data, do not specify an \code{id.col}, (or use \code{id.col =
+  NA}).}
 
-\item{groups}{Vector of group names. Defaults to all groups in \code{data} in
+\item{groups}{Vector of group names. Defaults to all groups in \code{x} in
 \emph{natural} order. If \code{groups} is a named vector, the names are
-used as group labels for plotting or printing.}
+used as group labels for plotting or printing. If \code{data.col} and
+\code{group.col} are not specified, \code{x} is assumed be to in \emph{wide
+format}, and \code{groups} must be a list of column names identifying the
+group/treatment data (see example).}
 
 \item{contrasts}{Specify the pairs of groups to be compared. By default, all
 pairwise differences are generated. May be a single string, a vector of
-strings, or a matrix. Specify \code{NULL} to avoid calculating any
-contrasts. See Details for more information.}
+strings, or a matrix. Specify
+\code{NULL} to avoid calculating any contrasts. See Details for more information.}
 
-\item{effect.type}{Type of group difference to be estimated. Possible types
-are: \code{"mean"}, difference in unstandardised group means;
-\code{"cohens"}, Cohen's d; \code{"hedges"}, Hedges' g; or a function. See
-Details for further information.}
+\item{effect.type}{Type of group difference to be estimated. Values cannot be
+abbreviated. See Details for further information.}
 
-\item{R}{The number of bootstrap replicates. The default value of 1000 may
-need to be increased for large sample sizes; if \code{R <= nrow(x)}, an
-error such as "Error in bca.ci... estimated adjustment 'a' is NA" will be
-thrown.}
+\item{R}{The number of bootstrap replicates. \code{R} should be larger than
+your sample size, so the default value of 1000 may need to be increased for
+large sample sizes. If \code{R <= nrow(x)}, an error such as "\code{Error in
+  bca.ci... estimated adjustment 'a' is NA}" will be thrown. Additionally,
+warnings such as "\code{In norm.inter(t, adj.alpha) : extreme order
+  statistics used as endpoints}" may be avoided by increasing \code{R}.
+Specify \code{R = NA} if you do not wish to calculate any CIs, either
+for group means for for effect sizes. This may be useful if Durga is
+only being used for plotting large data sets.}
 
 \item{boot.params}{Optional list of additional names parameters to pass to
 the \code{\link[boot]{boot}} function.}
 
 \item{ci.conf}{Numeric confidence level of the required confidence interval,
-e.g. \code{ci.conf = 0.95} specifies that 95\% confidence intervals should
+e.g. \code{ci.conf = 0.95} specifies that 95\\% confidence intervals should
 be calculated. Applies to both CI of effect sizes and CI of group means.}
 
 \item{boot.ci.params}{Optional list of additional names parameters to pass to
@@ -77,52 +85,79 @@ for "paired" data (i.e. \code{id.col} is specified), all rows
 \value{
 A \code{DurgaDiff} object, which is a list containing:
 
-  \item{\code{group.statistics}}{Matrix with a row for each group, columns
-  are: \code{mean}, \code{median}, \code{sd} (standard deviation), \code{se}
-  (standard error of the mean), \code{CI.lower} and \code{CI.upper} (lower
-  and upper confidence intervals of the mean, confidence level as set by the
-  \code{ci.conf} parameter) and \code{n} (group sample size)}
+\item{\code{group.statistics}}{Matrix with a row for each group, columns
+are: \code{mean}, \code{median}, \code{sd} (standard deviation), \code{se}
+(standard error of the mean), \code{CI.lower} and \code{CI.upper} (lower
+and upper bootstrapped confidence intervals of the mean, confidence level
+as set by the \code{ci.conf} parameter) and \code{n} (group sample size).
+If there are fewer than 3 distinct values in the group, or if \code{R} is
+\code{NA}, the confidence interval will not be calculated and
+\code{CI.lower} and \code{CI.upper} will be \code{NA}.}
 
-  \item{\code{group.differences}}{List of \code{DurgaGroupDiff} objects,
-  which are \code{boot} objects with added confidence interval information.
-  See \code{\link[boot]{boot}} and \code{\link[boot]{boot.ci}}. This element will be missing
-  if \code{contrasts} is empty or \code{NULL}}
+\item{\code{group.differences}}{List of \code{DurgaGroupDiff} objects,
+which are \code{boot} objects with added confidence interval information.
+See \code{\link[boot]{boot}} and \code{\link[boot]{boot.ci}}. This element will be missing
+if \code{contrasts} is empty or \code{NULL}}
 
-  \item{\code{groups}}{Vector of group names}
-  \item{\code{group.names}}{Labels used to identify groups}
-  \item{\code{effect.type}}{Value of \code{effect.type} parameter}
-  \item{\code{effect.name}}{Pretty version of \code{effect.type}}
-  \item{\code{data.col}}{Value of \code{data.col} parameter; may be an index
-  or a name} \item{\code{data.col.name}}{Name of the \code{data.col} column}
-  \item{\code{group.col}}{Value of \code{group.col} parameter; may be an
-  index or a name} \item{\code{group.col.name}}{Name of the \code{group.col}
-  column} \item{\code{id.col}}{Value of \code{id.col} parameter. May be
-  \code{NULL}} \item{\code{paired.data}}{\code{TRUE} if paired differences
-  were estimated} \item{\code{data}}{The input data frame}
-  \item{\code{call}}{How this function was called}
+\item{\code{groups}}{Vector of group names}
+\item{\code{group.names}}{Labels used to identify groups}
+\item{\code{effect.type}}{Value of \code{effect.type} parameter}
+\item{\code{effect.name}}{Name of the effect type; may include formatting
+such as subscripts} \item{\code{effect.name.print}}{Text-only version of
+\code{effect.name} for printing; subscripts are indicated by \code{"_"}}
+\item{\code{data.col}}{Value of \code{data.col} parameter; may be an index
+or a name} \item{\code{data.col.name}}{Name of the \code{data.col} column}
+\item{\code{group.col}}{Value of \code{group.col} parameter; may be an
+index or a name}
+\item{\code{group.col.name}}{Name of the \code{group.col} column}
+\item{\code{id.col}}{Value of \code{id.col} parameter. May be \code{NULL}}
+\item{\code{paired.data}}{\code{TRUE} if paired differences
+were estimated}
+\item{\code{data}}{The input data frame (\code{x}), or the reshaped (long format) data
+frame if the input data set was in wide format}
+\item{\code{call}}{How this function was called}
 
-  A \code{DurgaGroupDiff} object is a \code{boot} object (as returned by
-  \code{\link[boot]{boot}}) with added \code{bootci} components (as returned
-  by \code{\link[boot]{boot.ci}}) and components identifying the groups used
-  to estimate the difference. Particularly relevant members are:
+A \code{DurgaGroupDiff} object is a \code{boot} object (as returned by
+\code{\link[boot]{boot}}) with added \code{bootci} components (as returned
+by \code{\link[boot]{boot.ci}}) and components identifying the groups used
+to estimate the difference. Particularly relevant members are:
 
-  \item{\code{t0}}{The observed value of the statistic}
-  \item{\code{bca[4]}}{The lower endpoint of the confidence interval}
-  \item{\code{bca[5]}}{The upper endpoint of the confidence interval}
-  \item{\code{groups}}{The difference is estimated on \code{groups[1]} -
-  \code{groups[2]}}
+\item{\code{t0}}{The observed value of the statistic}
+\item{\code{bca[4]}}{The lower endpoint of the confidence interval}
+\item{\code{bca[5]}}{The upper endpoint of the confidence interval}
+\item{\code{groups}}{The difference is estimated on \code{groups[1]} -
+\code{groups[2]}}
 }
 \description{
 Estimates differences between groups in preparation for plotting by
 \code{\link{DurgaPlot}}.
 }
 \details{
-If \code{x} is a \code{data.frame} (or similar), it must be in \emph{long
-format}: one column (\code{data.col}) contains the measurement or value to be
-compared, and another column (\code{group.col}) the group identity. For
-repeated measures/paired data, a subject identity column (\code{id.col}) is
-also required. Alternatively, \code{x} may be a formula; see
-\code{\link{DurgaDiff.formula}}.
+\subsection{Data format}{
+
+\code{x} may be a formula; see \code{\link{DurgaDiff.formula}}.
+
+If \code{x} is a \code{data.frame} (or similar) it may be in either \emph{long} or \emph{wide}
+format. In long format, one column (\code{data.col}) contains the measurement or value to be
+compared, and another column (\code{group.col}) contains the group identity. Repeated
+measures/paired data/within-subject comparisons in long format require a subject
+identity column (\code{id.col}).
+
+Wide format contains different measurements in different columns of the same row, and
+is well-suited for repeated measures/paired/within-subject comparison data. To pass
+wide format data, do not specify the arguments \code{data.col} or
+\code{group.col}. Instead, you must explicitly specify the groups to be
+compared in the \code{groups} argument. Each group must be the name of a
+column in \code{x}. For paired data, you may specify \code{id.col}, although it is not
+required, as wide format data is assumed to be paired. The \code{id.col} can be a column
+that already exists and uniquely identifies each specimen, or it can be the name of a
+column to be created, in which case the specimen ID will be a generated integer sequence.
+Unpaired data can be in wide format, but it is necessary to inform Durga by passing \code{id.col = NULL}.
+Wide format data will be internally converted to long format, then processing continues as
+for long format input.
+}
+
+\subsection{Contrasts}{
 
 The pairs of groups to be compared are defined by the parameter
 \code{contrasts}. An asterisk (\code{"*"}, the default) creates contrasts for
@@ -133,20 +168,67 @@ control"} compares all groups against the \code{"control"} group, i.e. the
 looks like \code{c("group1 - group2", "group3 - group4")}. If a matrix is
 specified, it must have a column for each contrast, with the first group in
 row 1 and the second in row 2.
+}
 
-The formulae for Cohen's d and Hedges' g are from Lakens (2013), equations 1
-and 4 respectively. The Cohen's d we use is labelled
-\emph{\out{d<sub>s</sub>}} by Lakens (2013). Hedges' g is a corrected version
-of Cohen's d, and is more suitable for small sample sizes. For paired (i.e.
-repeated measures) Cohen's d, we apply equation 6 (Lakens 2013). For paired
-Hedges' g, we apply Hedges' correction to the paired Cohen's d.
+\subsection{Effect types}{
 
-Alternative effect types can be estimated by passing a function for
-\code{effect.type}. For unpaired data, the function must accept two
-parameters: the values from the two groups to be compared (group 2 and group
-1), and return a single numeric value, the effect size. For paired data, the
-function must accept a single argument; a vector of group 1 values - group 2
-values, and return a single numeric value.
+The \code{effect.type} parameter determines the effect size measure to be
+calculated. Our terminology generally follows Lakens (2013), with \emph{d} meaning
+a biased estimate and \emph{g} meaning a bias-corrected estimate. Some writers
+reverse this usage or use alternative terminology. Cumming (2012) recommends
+always using a bias-corrected estimate (although bias
+correction is unnecessary for large sample sizes).
+Durga applies Hedges' exact method for bias correction.
+
+The effect type we call
+\eqn{Cohen's\text{ }d} for unpaired data is called \eqn{Cohen's\text{ }d_s^*}
+by Delacre et al. (2021). For paired data, our \eqn{Cohen's\text{ }d} is
+identical to \eqn{Cohen's\text{ }d}
+for unpaired data (Delacre et al. 2021); it is called \eqn{d_{av}}
+by Cumming (2012; equation 11.10). For further details, refer to Khan and McLean (2023).
+
+The set of possible values for the \code{effect.type} argument, and
+their meanings, is described below.
+\subsection{Unpaired effect types}{\tabular{llll}{
+   \strong{Code} \tab \strong{Label} \tab \strong{Effect type} \tab \strong{Standardiser} \cr
+   \code{mean} \tab \eqn{Mean\text{ }difference} \tab Unstandardised difference of group means \tab NA \cr
+   \verb{cohens d} \tab \eqn{Cohen's\text{ }d} \tab Difference in means standardised by non-pooled average SD (Delacre et al. 2021) \tab \eqn{\sqrt{({s_1}^2 + {s_2}^2)/2}} \cr
+   \verb{hedges g} \tab \eqn{Hedges'\text{ }g} \tab Bias-corrected \eqn{Cohen's\text{ }d} (Delacre et al. 2021) \tab \eqn{\sqrt{({s_1}^2 + {s_2}^2)/2}} \cr
+   \code{cohens} \code{d_s} \tab \eqn{Cohen's\text{ }d_s} \tab Difference in means standardised by the pooled standard deviation (Lakens 2013, equation 1) \tab \eqn{\sqrt{\frac{(n_1-1){s_1}^2 + (n_2-1){s_2}^2}{{n_1} + {n_2} - 2}}} \cr
+   \verb{hedges g_s} \tab \eqn{Hedges'\text{ }g_s} \tab Bias-corrected \eqn{Cohen's\text{ }d_s} (Lakens 2013, equation 4) \tab \eqn{\sqrt{\frac{(n_1-1){s_1}^2 + (n_2-1){s_2}^2}{{n_1} + {n_2} - 2}}} \cr
+   \code{glass} \code{delta_pre} \tab \eqn{Glass's\text{ }\Delta_{pre}} \tab Difference in means standardised by the standard deviation of the pre-measurement group (which is the 2nd group in a contrast). Lakens (2013) recommends using Glass's \eqn{\Delta} whenever standard deviations differ substantially between conditions \tab \eqn{s_2} \cr
+   \code{glass} \code{delta_post} \tab \eqn{Glass's\text{ }\Delta_{post}} \tab Difference in means standardised by the standard deviation of the post-measurement group (which is the 1st group in a contrast) \tab \eqn{s_1} \cr
+}
+
+}
+
+\subsection{Paired effect types}{\tabular{llll}{
+   \strong{Code} \tab \strong{Label} \tab \strong{Effect type} \tab \strong{Standardiser} \cr
+   \code{mean} \tab \eqn{Mean\text{ }difference} \tab Unstandardised mean of group differences \tab NA \cr
+   \code{cohens} \code{d} \tab \eqn{Cohen's\text{ }d} \tab Similar to \eqn{Cohen's\text{ }d_{av}} except that the normaliser is non-pooled average SD rather than mean SD, as recommended by Cummings (2012, eqn 11.9) \tab \eqn{\sqrt{({s_1}^2 + {s_2}^2)/2}} \cr
+   \code{hedges} \code{g} \tab \eqn{Hedges'\text{ }g} \tab Bias-corrected \eqn{Cohen's\text{ }d} \tab \eqn{\sqrt{({s_1}^2 + {s_2}^2)/2}} \cr
+   \code{cohens} \code{d_z} \tab \eqn{Cohen's\text{ }d_z} \tab Mean of differences, standardised by the standard deviation of the differences, (Lakens 2013, equation 6). Cummings (2012) recommends against using \eqn{Cohen's\text{ }d_z}, preferring \eqn{Cumming's\text{ }d_{av}} \tab \eqn{\sqrt{\frac{\sum{({X_{diff}} - {M_{diff}})^2}}{n-1}}} \cr
+   \verb{hedges g_z} \tab \eqn{Hedges'\text{ }g_z} \tab Bias-corrected \eqn{Cohen's\text{ }d_z} \tab \eqn{\sqrt{\frac{\sum{({X_{diff}} - {M_{diff}})^2}}{n-1}}} \cr
+   \code{cohens} \code{d_av} \tab \eqn{Cohen's\text{ }d_{av}} \tab Difference in means standardised by the average standard deviation of the groups (Lakens 2013, equation 10) \tab \eqn{\dfrac{{s_1} + {s_2}}{2}} \cr
+   \code{hedges} \code{g_av} \tab \eqn{Hedges'\text{ }g_{av}} \tab Bias-corrected \eqn{Cohen's\text{ }d_{av}} \tab \eqn{\dfrac{{s_1} + {s_2}}{2}} \cr
+}
+
+
+As a simple rule of thumb, if you want a standardised effect type and you
+don't know which one to use, use \code{"hedges g"} for either paired or unpaired data,
+as it is recommended by Delacre et al., (2021) for unpaired data and cumming (2012)
+for paired data.
+
+Additional effect types can be applied by passing a function for
+\code{effect.type}. The function must accept two
+parameters and return a single numeric value, the effect size.
+Each parameter is a vector of values from one of the two groups to be
+compared (group 2 and group 1).
+}
+
+}
+
+\subsection{Confidence intervals}{
 
 Confidence intervals for the estimate are determined using bootstrap
 resampling, using the adjusted bootstrap percentile (BCa) method (see
@@ -154,6 +236,7 @@ resampling, using the adjusted bootstrap percentile (BCa) method (see
 arguments can be passed to the \code{\link[boot]{boot}}
 (\code{\link[boot]{boot.ci}}) by passing a named list of values as the
 argument \code{boot.params} (\code{boot.ci.params}).
+}
 }
 \examples{
 
@@ -163,20 +246,33 @@ print(d)
 # Change group order and displayed group labels, reverse the
 # direction of one of the contrasts from the default
 d <- DurgaDiff(petunia, 1, 2,
-               groups = c("self-fertilised" = "self_fertilised",
-                          "intercrossed" = "inter_cross",
+               groups = c("Self-fertilised" = "self_fertilised",
+                          "Intercrossed" = "inter_cross",
                           "Westerham-crossed" = "westerham_cross"),
-               contrasts = c("Westerham-crossed - self-fertilised",
-                             "Westerham-crossed - intercrossed",
-                             "intercrossed - self-fertilised"))
+               contrasts = c("Westerham-crossed - Self-fertilised",
+                             "Westerham-crossed - Intercrossed",
+                             "Intercrossed - Self-fertilised"))
+
+# Wide format data
+d <- DurgaDiff(insulin.wide, groups = c("sugar.before", "sugar.after"))
 
 }
 \references{
-Lakens, D. (2013). Calculating and reporting effect sizes to facilitate
+\itemize{
+\item Cumming, G. (2012). Understanding the new statistics : effect sizes,
+confidence intervals, and meta-analysis (1st ed.). New York: Routledge.
+\item Delacre, M., Lakens, D., Ley, C., Liu, L., & Leys, C. (2021). Why
+Hedges' g* based on the non-pooled standard deviation should be reported
+with Welch's t-test. \doi{10.31234/osf.io/tu6mp}
+\item Khan, M. K., & McLean, D. J. (2023). Durga: An R package for effect size estimation
+and visualisation. bioRxiv, 2023.2002.2006.526960.
+\doi{10.1101/2023.02.06.526960}
+\item Lakens, D. (2013). Calculating and reporting effect sizes to facilitate
 cumulative science: a practical primer for t-tests and ANOVAs. Frontiers in
-Psychology, 4. doi:10.3389/fpsyg.2013.00863
+Psychology, 4. \doi{10.3389/fpsyg.2013.00863}
+}
 }
 \seealso{
 \code{\link{DurgaDiff.formula}}, \code{\link[boot]{boot}},
-  \code{\link[boot]{boot.ci}}, \code{\link{DurgaPlot}}
+\code{\link[boot]{boot.ci}}, \code{\link{DurgaPlot}}
 }

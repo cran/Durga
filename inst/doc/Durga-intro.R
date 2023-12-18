@@ -4,7 +4,7 @@ library(Durga)
 library(datasets)
 
 ## -----------------------------------------------------------------------------
-# Inspect the insulin data set
+# Inspect the insulin data set, paired data in long format
 head(insulin[insulin$id < 4, ])
 
 # Calculate differences in group means
@@ -14,6 +14,13 @@ d
 ## -----------------------------------------------------------------------------
 # Use a formula to define the model
 DurgaDiff(sugar ~ treatment, insulin, id.col = "id")
+
+## -----------------------------------------------------------------------------
+# Inspect the wide insulin data set
+head(insulin.wide)
+
+# Calculate differences in group means
+(d <- DurgaDiff(insulin.wide, groups = c("sugar.before", "sugar.after")))
 
 ## ----fig.height=4, fig.width=4------------------------------------------------
 DurgaPlot(d)
@@ -50,6 +57,22 @@ par(mar = c(5, 4, 1, 1) + 0.1)
 # with colour rather than developmental stage
 d <- DurgaDiff(mass ~ maturity, damselfly, na.rm = TRUE,
                groups = c("Yellow" = "juvenile", "Red" = "adult"))
+DurgaPlot(d, 
+          # Custom y-axis label
+          left.ylab = "Body mass (mg)", 
+          # Specify the colours to (approximately) match the data
+          group.colour = c("orange", "red"), 
+          box = TRUE, box.fill = FALSE)
+
+## ----fig.height=4, fig.width=5------------------------------------------------
+# No title on this plot, so reduce the top margin size
+par(mar = c(5, 4, 1, 1) + 0.1)
+
+# Immature males are yellow, mature are red. Display juveniles first, and label
+# with colour rather than developmental stage
+d <- DurgaDiff(mass ~ maturity, damselfly, na.rm = TRUE,
+               groups = c("Juveniles" = "juvenile", "Adults" = "adult"))
+d$group.names <- c(expression(italic("Juveniles")), expression(bold("Adults")))
 DurgaPlot(d, 
           # Custom y-axis label
           left.ylab = "Body mass (mg)", 
@@ -188,10 +211,10 @@ effectSizes <- c("No effect" = 0, "Large positive effect" = 0.8, "Huge positive 
 # Give the groups friendly names
 groups <- c("Self" = "self_fertilised", "Westerham" = "westerham_cross", "Inter" = "inter_cross")
 
-# Calculate Cohen's d rather than unstandardised difference in means
-d <- DurgaDiff(petunia, 1, 2, effect.type = "cohens", groups = groups)
+# Calculate bias-corrected Cohen's d, named Hedges' g, rather than unstandardised difference in means
+d <- DurgaDiff(petunia, 1, 2, effect.type = "hedges g", groups = groups)
 
-DurgaPlot(d, violin = FALSE, main = "Cohen's d, labelled effect size", 
+DurgaPlot(d, violin = FALSE, main = "Hedges' g, labelled effect size", 
           points.method = "jitter", 
           # Use our ticks and labels instead of default
           ef.size.ticks = effectSizes, 
@@ -225,14 +248,14 @@ d
 
 ## ----eval=FALSE---------------------------------------------------------------
 #  # Create a new function that calls effectsize::cohens_d and returns just the calculated statistic
-#  myCohens <- function(x1, x2) {
+#  myCohensAv <- function(x1, x2) {
 #    # Note that we swap the arguments because Durga expects the calculation to be x2 - x1
 #    cd <- effectsize::cohens_d(x2, x1, pooled_sd = FALSE)
 #    # Extract and return just the Cohen's d value
 #    cd$Cohens_d
 #  }
 #  # Pass it in to DurgaDiff as the effect.type
-#  d <- DurgaDiff(petunia, 1, 2, effect.type = myCohens)
+#  d <- DurgaDiff(petunia, 1, 2, effect.type = myCohensAv)
 #  
 #  # Specify the effect type label
 #  DurgaPlot(d, ef.size.label = expression("Cohen's d"))

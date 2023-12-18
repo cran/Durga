@@ -1,6 +1,29 @@
+Questions for Kawsar
+====================
 
-Add inst/CITATION file
+Once published, update vignette to refer to paper for available effect types.
 
+Rename d* to d?
+
+Add interactions by splitting into separate groups
+
+Possible collaborator Masahiro Ryo
+
+Can we look at random effects separately within each group? That would allow handling of random effects which interact with groups.
+
+With new multiple effect types, should we interpret the old values of effect.type (i.e. "cohens", "hedges") in some way? Or should we force people to make an explicit choice? It means old code would break, but with a meaningful error message.
+
+
+
+
+For paired plots, optionally add points to effect size to show differences, because the effect size CI is the CI of the differences. See fig 6.9 in Cumming (2012) for an example.
+
+Update inst/CITATION file once published
+
+Ability to bootstrap complex statistics such as slope from lm. Need to think how the group concept fits in. Perhaps we need a new multi-variate version of DurgaDiff and DurgaPlot. For instance, we can't take the mean of a multi-variate group when describing the groups. Perhaps need to take means of all variables in the group?
+Currently, the statistic is calculated for variables from 2 groups. If applying an lm, would probably need to bootstrap statistic for each group, rather than pairs of groups.
+
+Allow central tendency to be median, then do all calc (CIs, diffs etc) on median instead of means?
 
 Add functionality to plot "confidence curves", see https://www.mn.uio.no/math/english/research/projects/focustat/the-focustat-blog!/confidence-dummies.html
 which also has an extensive bibliography
